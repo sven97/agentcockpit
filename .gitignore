@@ -20,3 +20,6 @@ web/dist/
 
 # Go
 vendor/
+
+# Internal docs (not for public repo)
+PRD.md
