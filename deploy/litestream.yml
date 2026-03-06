@@ -2,5 +2,9 @@ dbs:
   - path: /data/agentcockpit.db
     replicas:
       - type: gcs
-        bucket: agentcockpit-litestream
-        path: db
+        bucket: ${GCS_BUCKET}
+        path: agentcockpit/db
+        # Sync WAL every 1s; retain 24h of history
+        sync-interval: 1s
+        retention: 24h
+        retention-check-interval: 1h
