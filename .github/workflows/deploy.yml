@@ -5,15 +5,15 @@ on:
     branches: [main]
 
 # Required GitHub repo secrets:
-#   GCP_PROJECT              — GCP project ID (e.g. agentcockpit-prod)
-#   GCP_WORKLOAD_IDENTITY_PROVIDER — full WIF provider resource name
-#   GCP_SERVICE_ACCOUNT      — SA email that has AR writer + compute.viewer
-#   VM_HOST                  — public IP or hostname of the GCP VM
-#   VM_USER                  — SSH user on the VM (e.g. deploy)
-#   VM_SSH_KEY               — private SSH key for VM_USER
+#   GCP_PROJECT              = agentcockpit-app
+#   GCP_WORKLOAD_IDENTITY_PROVIDER = projects/536688950180/locations/global/workloadIdentityPools/github/providers/github-provider
+#   GCP_SERVICE_ACCOUNT      = github-actions@agentcockpit-app.iam.gserviceaccount.com
+#   VM_HOST                  = 136.119.228.227
+#   VM_USER                  = deploy
+#   VM_SSH_KEY               — private key from deploy key pair (see deploy/deploy-key-INSTRUCTIONS.md)
 #
 # Required GitHub repo variables (Actions → Variables):
-#   GCS_BUCKET               — GCS bucket name for Litestream
+#   GCS_BUCKET               = agentcockpit-litestream
 
 jobs:
   build-and-push:
