@@ -252,9 +252,9 @@ func (bc *BrowserConn) RunReader() {
 // ── Message routing ───────────────────────────────────────────────────────────
 
 // routePTYOutput fans out binary PTY output frames to all browsers watching
-// the session. Frame: [0x01][16-byte sessionId bytes][data].
+// the session. Frame: [0x01][32-byte sessionId ASCII hex][data] = 33-byte header.
 func (h *Hub) routePTYOutput(hc *HostConn, data []byte) {
-	if len(data) < 17 || data[0] != protocol.FramePTY {
+	if len(data) < 33 || data[0] != protocol.FramePTY {
 		return
 	}
 	// Forward raw frame to all browser clients for this user.

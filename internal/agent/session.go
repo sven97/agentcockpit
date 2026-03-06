@@ -98,24 +98,21 @@ func (p *sessionPool) start(msg protocol.SessionCreate, sendFn func(any)) {
 }
 
 // streamOutput reads PTY output and sends binary frames to the relay.
-// Frame format: [0x01][16-byte sessionId as fixed bytes][data]
+// Frame format: [0x01][32-byte sessionId ASCII hex][data] = 33-byte header.
 func (s *session) streamOutput() {
 	buf := make([]byte, 32*1024)
-	// Pre-build the 17-byte frame header: [0x01][16 bytes session UUID].
-	// We store the sessionID as 16 raw bytes (truncated/padded hex).
-	header := make([]byte, 17)
+	// Pre-build the 33-byte frame header.
+	header := make([]byte, 33)
 	header[0] = protocol.FramePTY
 	sid := []byte(s.id)
-	copy(header[1:17], sid[:min(16, len(sid))])
+	copy(header[1:33], sid) // session IDs are exactly 32 hex chars
 
 	for {
 		n, err := s.ptmx.Read(buf)
 		if n > 0 {
-			frame := make([]byte, 17+n)
+			frame := make([]byte, 33+n)
 			copy(frame, header)
-			copy(frame[17:], buf[:n])
-			// Send raw binary frame — wrap it as a special type the sendFn can handle.
-			// The daemon's wsWriter must handle []byte differently from JSON structs.
+			copy(frame[33:], buf[:n])
 			s.sendFn(rawFrame(frame))
 		}
 		if err != nil {

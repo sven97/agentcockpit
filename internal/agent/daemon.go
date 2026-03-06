@@ -9,6 +9,8 @@ import (
 	"log"
 	"net"
 	"os"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,19 +18,27 @@ import (
 	"github.com/sven97/agentcockpit/internal/protocol"
 )
 
+
 const (
-	socketPath     = "/tmp/agentcockpit-agent.sock"
-	reconnectMin   = 5 * time.Second
-	reconnectMax   = 60 * time.Second
-	reconnectMult  = 2.0
+	socketPath    = "/tmp/agentcockpit-agent.sock"
+	reconnectMin  = 5 * time.Second
+	reconnectMax  = 60 * time.Second
+	reconnectMult = 2.0
 )
 
-// Config holds the agent daemon configuration loaded from agent.toml.
+// Config holds the agent daemon configuration stored in agent.json.
+// RelayURL is the HTTP(S) base URL of the relay server (e.g. https://agentcockpit.io).
 type Config struct {
-	RelayURL     string `toml:"relay_url"`
-	Token        string `toml:"token"`
-	Name         string `toml:"name"`
-	AgentVersion string `toml:"-"` // injected at build time
+	RelayURL     string `json:"relay_url"`
+	Token        string `json:"token"`
+	Name         string `json:"name"`
+	AgentVersion string `json:"-"` // injected at build time
+}
+
+// wsMsg carries a WebSocket frame with its message type.
+type wsMsg struct {
+	data   []byte
+	binary bool
 }
 
 // Daemon manages the WebSocket connection to the relay and the local session pool.
@@ -44,7 +54,7 @@ type Daemon struct {
 	wsMu   sync.Mutex
 	wsConn *websocket.Conn
 
-	send chan []byte // outbound to relay
+	send chan wsMsg // outbound to relay
 }
 
 // New creates a Daemon from config.
@@ -53,7 +63,7 @@ func New(cfg Config) *Daemon {
 		cfg:              cfg,
 		sessions:         newSessionPool(),
 		pendingApprovals: make(map[string]chan *protocol.ApprovalResponse),
-		send:             make(chan []byte, 256),
+		send:             make(chan wsMsg, 256),
 	}
 }
 
@@ -71,7 +81,12 @@ func (d *Daemon) Run(ctx context.Context) error {
 		default:
 		}
 
-		if err := d.connect(ctx); err != nil {
+		connected, err := d.connect(ctx)
+		if connected {
+			// We had a live connection; reset backoff so we reconnect quickly.
+			delay = reconnectMin
+		}
+		if err != nil && err != context.Canceled {
 			log.Printf("relay disconnected: %v — reconnecting in %s", err, delay)
 		}
 
@@ -81,23 +96,27 @@ func (d *Daemon) Run(ctx context.Context) error {
 		case <-time.After(delay):
 		}
 
-		// Exponential backoff.
-		delay = time.Duration(float64(delay) * reconnectMult)
-		if delay > reconnectMax {
-			delay = reconnectMax
+		// Exponential backoff (applied only after failed dials).
+		if !connected {
+			delay = time.Duration(float64(delay) * reconnectMult)
+			if delay > reconnectMax {
+				delay = reconnectMax
+			}
 		}
 	}
 }
 
 // connect establishes a WebSocket connection to the relay and runs the read/write
-// loops until the connection drops or ctx is cancelled.
-func (d *Daemon) connect(ctx context.Context) error {
+// loops until the connection drops or ctx is cancelled. Returns (true, err) if
+// the connection was established (even if it later dropped), (false, err) on dial failure.
+func (d *Daemon) connect(ctx context.Context) (connected bool, err error) {
+	wsURL := httpToWS(d.cfg.RelayURL)
 	header := map[string][]string{
 		"Authorization": {"Bearer " + d.cfg.Token},
 	}
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, d.cfg.RelayURL+"/ws/host", header)
-	if err != nil {
-		return err
+	conn, _, dialErr := websocket.DefaultDialer.DialContext(ctx, wsURL+"/ws/host", header)
+	if dialErr != nil {
+		return false, dialErr
 	}
 	conn.SetReadLimit(512 * 1024)
 
@@ -115,21 +134,26 @@ func (d *Daemon) connect(ctx context.Context) error {
 	// Send host_hello.
 	hello := protocol.HostHello{
 		Type:         protocol.TypeHostHello,
-		HostID:       d.cfg.Token, // relay resolves to DB host ID by token
 		Name:         d.cfg.Name,
-		Platform:     detectPlatform(),
+		Platform:     runtime.GOOS,
 		AgentVersion: d.cfg.AgentVersion,
 	}
 	if err := conn.WriteJSON(hello); err != nil {
-		return err
+		return true, err
 	}
 	log.Printf("connected to relay %s as %q", d.cfg.RelayURL, d.cfg.Name)
 
-	// Reset reconnect delay on success — handled by caller resetting delay after connect returns nil.
 	errc := make(chan error, 2)
 	go d.wsReader(ctx, conn, errc)
 	go d.wsWriter(ctx, conn, errc)
-	return <-errc
+	return true, <-errc
+}
+
+// httpToWS converts an HTTP(S) URL to its WebSocket equivalent.
+func httpToWS(u string) string {
+	u = strings.Replace(u, "https://", "wss://", 1)
+	u = strings.Replace(u, "http://", "ws://", 1)
+	return u
 }
 
 // wsWriter pumps outbound messages from d.send to the WebSocket.
@@ -143,7 +167,11 @@ func (d *Daemon) wsWriter(ctx context.Context, conn *websocket.Conn, errc chan<-
 			return
 		case msg := <-d.send:
 			conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+			msgType := websocket.TextMessage
+			if msg.binary {
+				msgType = websocket.BinaryMessage
+			}
+			if err := conn.WriteMessage(msgType, msg.data); err != nil {
 				errc <- err
 				return
 			}
@@ -224,14 +252,22 @@ func (d *Daemon) handleRelayMessage(data []byte) {
 	}
 }
 
-// sendToRelay queues a JSON message for delivery to the relay server.
+// sendToRelay queues a message for delivery to the relay server.
+// rawFrame values are sent as binary WebSocket frames; everything else as JSON text.
 func (d *Daemon) sendToRelay(msg any) {
-	b, err := json.Marshal(msg)
-	if err != nil {
-		return
+	var m wsMsg
+	switch v := msg.(type) {
+	case rawFrame:
+		m = wsMsg{data: []byte(v), binary: true}
+	default:
+		b, err := json.Marshal(msg)
+		if err != nil {
+			return
+		}
+		m = wsMsg{data: b}
 	}
 	select {
-	case d.send <- b:
+	case d.send <- m:
 	default:
 		log.Printf("relay send buffer full, dropping message")
 	}
@@ -321,18 +357,3 @@ func (d *Daemon) handleHookConn(conn net.Conn) {
 	})
 }
 
-// ── Utilities ─────────────────────────────────────────────────────────────────
-
-func detectPlatform() string {
-	switch os.Getenv("GOOS") {
-	case "darwin":
-		return "darwin"
-	case "linux":
-		return "linux"
-	}
-	// Runtime detection.
-	if _, err := os.Stat("/System/Library/CoreServices"); err == nil {
-		return "darwin"
-	}
-	return "linux"
-}

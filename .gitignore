@@ -1,5 +1,5 @@
-# Binary
-agentcockpit
+# Binary (root-level compiled output only)
+/agentcockpit
 dist/
 
 # Web UI build output (generated; committed only for release)
