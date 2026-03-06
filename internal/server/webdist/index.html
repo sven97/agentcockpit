@@ -1,20 +1,1038 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AgentCockpit</title>
-  <style>
-    body { font-family: system-ui, sans-serif; background: #0f0f0f; color: #e5e5e5; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-    .card { text-align: center; }
-    h1 { font-size: 2rem; margin-bottom: 0.5rem; }
-    p  { color: #888; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentCockpit</title>
+<style>
+:root {
+  --bg:       #080808;
+  --surface:  #0f0f0f;
+  --card:     #131313;
+  --border:   #1f1f1f;
+  --border2:  #2a2a2a;
+  --text:     #d8d8d8;
+  --dim:      #555;
+  --dimmer:   #333;
+  --green:    #00d67c;
+  --green-bg: #00d67c14;
+  --amber:    #f5a623;
+  --amber-bg: #f5a62314;
+  --orange:   #f97316;
+  --orange-bg:#f9731614;
+  --red:      #ef4444;
+  --red-bg:   #ef444414;
+  --blue:     #3b82f6;
+  --blue-bg:  #3b82f614;
+  --font:     'SF Mono','Fira Code','Cascadia Code','Consolas','Courier New',monospace;
+}
+
+*,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scan-line overlay ── */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,.06) 2px,
+    rgba(0,0,0,.06) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ── Auth Screen ── */
+#auth {
+  display: none;
+  height: 100vh;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 0;
+}
+#auth.visible { display: flex; }
+
+.auth-box {
+  width: 380px;
+  border: 1px solid var(--border2);
+  background: var(--card);
+}
+
+.auth-logo {
+  padding: 32px 32px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.auth-logo .wordmark {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .15em;
+  color: var(--green);
+  text-transform: uppercase;
+}
+
+.auth-logo .tagline {
+  font-size: 11px;
+  color: var(--dim);
+  margin-top: 4px;
+  letter-spacing: .05em;
+}
+
+.auth-form {
+  padding: 24px 32px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field label {
+  display: block;
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 6px;
+}
+
+.field input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  padding: 9px 12px;
+  outline: none;
+  transition: border-color .15s;
+}
+
+.field input:focus { border-color: var(--green); }
+
+.btn-primary {
+  background: var(--green);
+  color: #000;
+  border: none;
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  padding: 10px 20px;
+  cursor: pointer;
+  width: 100%;
+  margin-top: 4px;
+  transition: opacity .15s;
+}
+.btn-primary:hover { opacity: .85; }
+.btn-primary:disabled { opacity: .4; cursor: not-allowed; }
+
+#auth-error {
+  font-size: 11px;
+  color: var(--red);
+  text-align: center;
+  min-height: 16px;
+}
+
+/* ── App Shell ── */
+#app {
+  display: none;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+#app.visible { display: flex; }
+
+/* ── Header ── */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  height: 44px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--surface);
+}
+
+.logo {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--green);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.ws-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  letter-spacing: .08em;
+  color: var(--dim);
+}
+
+.ws-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--dimmer);
+  transition: background .3s;
+}
+.ws-dot.connected { background: var(--green); }
+.ws-dot.connecting { background: var(--amber); animation: blink 1s infinite; }
+
+@keyframes blink {
+  0%,100% { opacity: 1; }
+  50% { opacity: .3; }
+}
+
+.btn-ghost {
+  background: none;
+  border: 1px solid var(--border2);
+  color: var(--dim);
+  font-family: var(--font);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.btn-ghost:hover { border-color: var(--border2); color: var(--text); }
+
+/* ── Approvals Banner ── */
+#approvals-section {
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--dim);
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  z-index: 10;
+}
+
+.section-header .count {
+  background: var(--border2);
+  color: var(--text);
+  font-size: 10px;
+  padding: 1px 6px;
+  min-width: 20px;
+  text-align: center;
+}
+
+.section-header.alert-header {
+  background: #1a0f00;
+  border-bottom-color: #3a2000;
+  color: var(--amber);
+}
+
+.section-header.alert-header .count {
+  background: var(--amber);
+  color: #000;
+}
+
+.approvals-list {
+  padding: 12px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.approval-card {
+  border: 1px solid var(--border2);
+  background: var(--card);
+  animation: slideIn .2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.approval-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+}
+
+.approval-card.risk-read::before    { background: var(--green); }
+.approval-card.risk-write::before   { background: var(--amber); }
+.approval-card.risk-execute::before { background: var(--orange); }
+.approval-card.risk-destructive::before { background: var(--red); }
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.approval-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px 10px;
+}
+
+.risk-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  flex-shrink: 0;
+}
+
+.risk-badge.read        { color: var(--green);  background: var(--green-bg);  }
+.risk-badge.write       { color: var(--amber);  background: var(--amber-bg);  }
+.risk-badge.execute     { color: var(--orange); background: var(--orange-bg); }
+.risk-badge.destructive { color: var(--red);    background: var(--red-bg);    }
+
+.tool-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+}
+
+.approval-meta {
+  padding: 0 16px 10px;
+  font-size: 10px;
+  color: var(--dim);
+  letter-spacing: .04em;
+}
+
+.tool-input-toggle {
+  background: none;
+  border: none;
+  color: var(--dim);
+  font-family: var(--font);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0;
+  letter-spacing: .04em;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+.tool-input-toggle:hover { color: var(--text); }
+
+.tool-input-body {
+  display: none;
+  margin: 6px 16px 10px;
+  padding: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--dim);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 120px;
+  overflow-y: auto;
+  line-height: 1.6;
+}
+.tool-input-body.open { display: block; }
+
+.approval-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: 1px solid var(--border);
+}
+
+.btn-allow, .btn-deny {
+  border: none;
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  padding: 11px 20px;
+  cursor: pointer;
+  transition: opacity .15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.btn-allow {
+  background: var(--green-bg);
+  color: var(--green);
+  border-right: 1px solid var(--border);
+}
+.btn-allow:hover { background: #00d67c22; }
+
+.btn-deny {
+  background: var(--red-bg);
+  color: var(--red);
+}
+.btn-deny:hover { background: #ef444422; }
+
+.btn-allow:disabled, .btn-deny:disabled { opacity: .4; cursor: not-allowed; }
+
+.empty-state {
+  padding: 24px 20px;
+  font-size: 11px;
+  color: var(--dimmer);
+  letter-spacing: .04em;
+}
+
+/* ── Main columns ── */
+.columns {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  flex: 1;
+  overflow: hidden;
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.col:first-child { border-right: 1px solid var(--border); }
+
+.col-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 0;
+}
+
+/* ── Host rows ── */
+.host-row {
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  cursor: default;
+  transition: background .1s;
+}
+.host-row:hover { background: var(--card); }
+.host-row:last-child { border-bottom: none; }
+
+.host-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot.online {
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  animation: pulse 2.5s infinite;
+}
+
+@keyframes pulse {
+  0%,100% { box-shadow: 0 0 6px var(--green); }
+  50%      { box-shadow: 0 0 12px var(--green), 0 0 4px var(--green); }
+}
+
+.status-dot.offline { background: var(--dimmer); }
+
+.host-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.host-platform {
+  font-size: 10px;
+  color: var(--dimmer);
+  letter-spacing: .06em;
+  background: var(--border);
+  padding: 1px 5px;
+}
+
+.host-meta {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--dimmer);
+  padding-left: 15px;
+  letter-spacing: .03em;
+}
+
+/* ── Session rows ── */
+.session-row {
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  transition: background .1s;
+}
+.session-row:hover { background: var(--card); }
+.session-row:last-child { border-bottom: none; }
+
+.session-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.session-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  flex-shrink: 0;
+}
+
+.status-badge.running           { color: var(--blue);  background: var(--blue-bg);  }
+.status-badge.awaiting_approval { color: var(--amber); background: var(--amber-bg); }
+.status-badge.starting          { color: var(--dim);   background: var(--border);   }
+.status-badge.stopped           { color: var(--dimmer);background: var(--border);   }
+.status-badge.error             { color: var(--red);   background: var(--red-bg);   }
+
+.session-meta {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--dimmer);
+  padding-left: 15px;
+  letter-spacing: .03em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Loading / skeleton ── */
+.loading {
+  padding: 20px;
+  color: var(--dimmer);
+  font-size: 11px;
+  letter-spacing: .06em;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--border) 25%, var(--border2) 50%, var(--border) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  height: 12px;
+  margin-bottom: 8px;
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+/* ── Scrollbars ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); }
+
+/* ── Toast notifications ── */
+#toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1000;
+}
+
+.toast {
+  background: var(--card);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-size: 11px;
+  padding: 10px 14px;
+  animation: toastIn .2s ease, toastOut .3s ease 2.7s forwards;
+  max-width: 280px;
+  letter-spacing: .04em;
+}
+
+@keyframes toastIn  { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:none; } }
+@keyframes toastOut { from { opacity:1; } to { opacity:0; } }
+
+/* ── Responsive ── */
+@media (max-width: 640px) {
+  .columns { grid-template-columns: 1fr; }
+  .col:first-child { display: none; }
+}
+</style>
 </head>
 <body>
-  <div class="card">
-    <h1>AgentCockpit</h1>
-    <p>Web UI coming soon — API is live.</p>
+
+<!-- Auth -->
+<div id="auth">
+  <div class="auth-box">
+    <div class="auth-logo">
+      <div class="wordmark">AgentCockpit</div>
+      <div class="tagline">AI session control plane</div>
+    </div>
+    <form class="auth-form" id="login-form">
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="email" autocomplete="email" required placeholder="you@example.com">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="password" autocomplete="current-password" required placeholder="••••••••">
+      </div>
+      <div id="auth-error"></div>
+      <button type="submit" class="btn-primary" id="login-btn">Sign in</button>
+    </form>
   </div>
+</div>
+
+<!-- App -->
+<div id="app">
+  <header>
+    <span class="logo">AgentCockpit</span>
+    <div class="header-right">
+      <div class="ws-indicator">
+        <div class="ws-dot" id="ws-dot"></div>
+        <span id="ws-label">disconnected</span>
+      </div>
+      <button class="btn-ghost" id="logout-btn">Logout</button>
+    </div>
+  </header>
+
+  <!-- Approvals (full-width top section) -->
+  <div id="approvals-section">
+    <div class="section-header" id="approvals-header">
+      <span>Pending Approvals</span>
+      <span class="count" id="approvals-count">0</span>
+    </div>
+    <div class="approvals-list" id="approvals-list">
+      <div class="empty-state">No pending approvals — all clear.</div>
+    </div>
+  </div>
+
+  <!-- Hosts + Sessions -->
+  <div class="columns">
+    <div class="col">
+      <div class="section-header">
+        <span>Hosts</span>
+        <span class="count" id="hosts-count">0</span>
+      </div>
+      <div class="col-body" id="hosts-list">
+        <div class="loading">Loading...</div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="section-header">
+        <span>Sessions</span>
+        <span class="count" id="sessions-count">0</span>
+      </div>
+      <div class="col-body" id="sessions-list">
+        <div class="loading">Loading...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+const state = {
+  token: localStorage.getItem('ac_token'),
+  hosts: [],
+  sessions: [],
+  approvals: [],
+  ws: null,
+  wsState: 'disconnected',
+};
+
+// ── API ────────────────────────────────────────────────────────────────────────
+
+async function api(method, path, body) {
+  try {
+    const res = await fetch(path, {
+      method,
+      headers: {
+        'Authorization': `Bearer ${state.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (res.status === 401) { logout(); return null; }
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || res.statusText);
+    }
+    if (res.status === 204 || res.headers.get('content-length') === '0') return null;
+    const ct = res.headers.get('content-type') || '';
+    if (ct.includes('application/json')) return res.json();
+    return null;
+  } catch (e) {
+    if (e.name !== 'TypeError') throw e; // network error
+    return null;
+  }
+}
+
+// ── Auth ───────────────────────────────────────────────────────────────────────
+
+function showAuth() {
+  $('auth').classList.add('visible');
+  $('app').classList.remove('visible');
+}
+
+function showApp() {
+  $('auth').classList.remove('visible');
+  $('app').classList.add('visible');
+  fetchAll();
+  connectWS();
+}
+
+function logout() {
+  if (state.ws) { state.ws.close(); state.ws = null; }
+  state.token = null;
+  localStorage.removeItem('ac_token');
+  showAuth();
+}
+
+$('login-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = $('login-btn');
+  const errEl = $('auth-error');
+  errEl.textContent = '';
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: $('email').value.trim(),
+        password: $('password').value,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.error || 'Login failed';
+      return;
+    }
+    state.token = data.token;
+    localStorage.setItem('ac_token', data.token);
+    showApp();
+  } catch (err) {
+    errEl.textContent = 'Network error — is the server running?';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sign in';
+  }
+});
+
+$('logout-btn').addEventListener('click', logout);
+
+// ── Data fetching ──────────────────────────────────────────────────────────────
+
+async function fetchAll() {
+  const [hosts, sessions, approvals] = await Promise.all([
+    api('GET', '/api/hosts'),
+    api('GET', '/api/sessions'),
+    api('GET', '/api/approvals'),
+  ]);
+  if (hosts     !== null) { state.hosts     = hosts     || []; renderHosts(); }
+  if (sessions  !== null) { state.sessions  = sessions  || []; renderSessions(); }
+  if (approvals !== null) { state.approvals = approvals || []; renderApprovals(); }
+}
+
+// ── WebSocket ──────────────────────────────────────────────────────────────────
+
+function setWS(s) {
+  state.wsState = s;
+  const dot   = $('ws-dot');
+  const label = $('ws-label');
+  dot.className = 'ws-dot ' + s;
+  label.textContent = s;
+}
+
+function connectWS() {
+  if (state.ws) return;
+  setWS('connecting');
+
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/ws/browser?token=${state.token}`);
+  state.ws = ws;
+
+  ws.onopen = () => {
+    setWS('connected');
+    fetchAll();
+  };
+
+  ws.onclose = () => {
+    state.ws = null;
+    setWS('disconnected');
+    // Reconnect after 5s
+    setTimeout(() => { if (state.token) connectWS(); }, 5000);
+  };
+
+  ws.onerror = () => {
+    ws.close();
+  };
+
+  ws.onmessage = e => {
+    // Binary = PTY frame, ignore in dashboard
+    if (e.data instanceof ArrayBuffer || e.data instanceof Blob) return;
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
+    handleWS(msg);
+  };
+}
+
+function handleWS(msg) {
+  switch (msg.type) {
+    case 'host_status': {
+      const h = state.hosts.find(h => h.ID === msg.hostId);
+      if (h) {
+        h.Status = msg.status;
+        renderHosts();
+      } else {
+        fetchAll(); // new host appeared
+      }
+      break;
+    }
+    case 'approval_request': {
+      // Avoid duplicates
+      if (!state.approvals.find(a => a.ID === msg.requestId)) {
+        state.approvals.unshift({
+          ID: msg.requestId,
+          SessionID: msg.sessionId,
+          ToolName: msg.toolName,
+          ToolInput: typeof msg.toolInput === 'string' ? msg.toolInput : JSON.stringify(msg.toolInput, null, 2),
+          RiskLevel: msg.riskLevel,
+          Status: 'pending',
+        });
+        renderApprovals();
+        toast(`⚠ Approval needed: ${msg.toolName}`);
+      }
+      break;
+    }
+    case 'approval_resolved': {
+      state.approvals = state.approvals.filter(a => a.ID !== msg.id);
+      renderApprovals();
+      break;
+    }
+    case 'session_started': {
+      const s = state.sessions.find(s => s.ID === msg.sessionId);
+      if (s) { s.Status = 'running'; renderSessions(); }
+      else fetchAll();
+      break;
+    }
+    case 'session_stopped': {
+      const s = state.sessions.find(s => s.ID === msg.sessionId);
+      if (s) { s.Status = 'stopped'; renderSessions(); }
+      break;
+    }
+  }
+}
+
+// ── Approval actions ───────────────────────────────────────────────────────────
+
+async function resolve(id, decision) {
+  const card = document.querySelector(`[data-id="${id}"]`);
+  if (card) {
+    card.querySelectorAll('button').forEach(b => b.disabled = true);
+    card.style.opacity = '.5';
+  }
+  try {
+    await api('POST', `/api/approvals/${id}`, { decision });
+    state.approvals = state.approvals.filter(a => a.ID !== id);
+    renderApprovals();
+    toast(decision === 'approved' ? '✓ Allowed' : '✗ Denied');
+  } catch (err) {
+    if (card) {
+      card.querySelectorAll('button').forEach(b => b.disabled = false);
+      card.style.opacity = '1';
+    }
+    toast('Error: ' + err.message);
+  }
+}
+
+// ── Rendering ──────────────────────────────────────────────────────────────────
+
+function renderApprovals() {
+  const list   = $('approvals-list');
+  const header = $('approvals-header');
+  const count  = $('approvals-count');
+  const n = state.approvals.length;
+
+  count.textContent = n;
+
+  if (n > 0) {
+    header.classList.add('alert-header');
+  } else {
+    header.classList.remove('alert-header');
+  }
+
+  if (n === 0) {
+    list.innerHTML = '<div class="empty-state">No pending approvals — all clear.</div>';
+    return;
+  }
+
+  list.innerHTML = state.approvals.map(a => {
+    const risk = (a.RiskLevel || 'execute').toLowerCase();
+    let inputStr = a.ToolInput || '';
+    if (typeof inputStr === 'object') inputStr = JSON.stringify(inputStr, null, 2);
+    try {
+      const parsed = JSON.parse(inputStr);
+      inputStr = JSON.stringify(parsed, null, 2);
+    } catch {}
+    const preview = inputStr.length > 60 ? inputStr.slice(0, 60) + '…' : inputStr;
+
+    return `
+<div class="approval-card risk-${risk}" data-id="${a.ID}">
+  <div class="approval-header">
+    <span class="risk-badge ${risk}">${risk}</span>
+    <span class="tool-name">${esc(a.ToolName)}</span>
+  </div>
+  <div class="approval-meta">
+    <span>session: ${esc((a.SessionID||'').slice(0,12))}…</span>
+    &nbsp;·&nbsp;
+    <button class="tool-input-toggle" onclick="toggleInput(this)">▸ view input</button>
+    <div class="tool-input-body">${esc(inputStr)}</div>
+  </div>
+  <div class="approval-actions">
+    <button class="btn-allow" onclick="resolve('${a.ID}','approved')">✓ Allow</button>
+    <button class="btn-deny"  onclick="resolve('${a.ID}','rejected')">✗ Deny</button>
+  </div>
+</div>`;
+  }).join('');
+}
+
+function toggleInput(btn) {
+  const body = btn.nextElementSibling;
+  const open = body.classList.toggle('open');
+  btn.textContent = open ? '▾ hide input' : '▸ view input';
+}
+
+function renderHosts() {
+  const el = $('hosts-list');
+  const count = $('hosts-count');
+  count.textContent = state.hosts.length;
+
+  if (!state.hosts.length) {
+    el.innerHTML = '<div class="empty-state">No hosts connected.<br>Run <code>agentcockpit connect</code>.</div>';
+    return;
+  }
+
+  el.innerHTML = state.hosts.map(h => {
+    const online = h.Status === 'online';
+    const lastSeen = h.LastSeenAt ? relTime(h.LastSeenAt) : '—';
+    return `
+<div class="host-row">
+  <div class="host-row-top">
+    <div class="status-dot ${online ? 'online' : 'offline'}"></div>
+    <span class="host-name">${esc(h.Name || h.Hostname || h.ID.slice(0,8))}</span>
+    <span class="host-platform">${esc(h.Platform || '?')}</span>
+  </div>
+  <div class="host-meta">${esc(h.Hostname || '')}${h.Hostname ? ' · ' : ''}${online ? 'online' : 'last seen ' + lastSeen}</div>
+</div>`;
+  }).join('');
+}
+
+function renderSessions() {
+  const el = $('sessions-list');
+  const count = $('sessions-count');
+  count.textContent = state.sessions.length;
+
+  if (!state.sessions.length) {
+    el.innerHTML = '<div class="empty-state">No sessions yet.<br>Use the API to create a session.</div>';
+    return;
+  }
+
+  // Find host name for each session
+  const hostMap = {};
+  state.hosts.forEach(h => { hostMap[h.ID] = h.Name || h.Hostname || h.ID.slice(0,8); });
+
+  el.innerHTML = state.sessions.map(s => {
+    const name = s.Name || s.AgentType || 'session';
+    const hostName = hostMap[s.HostID] || s.HostID.slice(0,8);
+    const dir = s.WorkingDir || '';
+    const shortDir = dir.replace(/^\/Users\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~');
+    return `
+<div class="session-row">
+  <div class="session-row-top">
+    <div class="status-dot ${s.Status === 'running' ? 'online' : 'offline'}"></div>
+    <span class="session-name">${esc(name)}</span>
+    <span class="status-badge ${s.Status}">${s.Status}</span>
+  </div>
+  <div class="session-meta">${esc(s.AgentType)} · ${esc(hostName)} · ${esc(shortDir)}</div>
+</div>`;
+  }).join('');
+}
+
+// ── Utilities ──────────────────────────────────────────────────────────────────
+
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+function relTime(iso) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60)  return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s/60)}m ago`;
+  return `${Math.floor(s/3600)}h ago`;
+}
+
+function toast(msg) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  $('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+
+if (state.token) {
+  showApp();
+} else {
+  showAuth();
+}
+</script>
 </body>
 </html>
