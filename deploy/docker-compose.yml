@@ -1,0 +1,18 @@
+services:
+  agentcockpit:
+    image: ghcr.io/sven97/agentcockpit:latest
+    restart: unless-stopped
+    ports:
+      - "7080:7080"
+    volumes:
+      - agentcockpit_data:/data
+    environment:
+      - DATA_DIR=/data
+      - AGENTCOCKPIT_SECRET=${AGENTCOCKPIT_SECRET}
+      - AGENTCOCKPIT_PORT=7080
+      # Optional GitHub OAuth (cloud/self-hosted with OAuth)
+      # - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      # - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+
+volumes:
+  agentcockpit_data:

@@ -1,0 +1,6 @@
+dbs:
+  - path: /data/agentcockpit.db
+    replicas:
+      - type: gcs
+        bucket: agentcockpit-litestream
+        path: db

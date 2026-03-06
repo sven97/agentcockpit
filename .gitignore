@@ -1,0 +1,22 @@
+# Binary
+agentcockpit
+dist/
+
+# Web UI build output (generated; committed only for release)
+web/dist/
+
+# SQLite
+*.db
+*.db-shm
+*.db-wal
+
+# Config with secrets
+*.env
+.env
+/deploy/.env
+
+# macOS
+.DS_Store
+
+# Go
+vendor/
