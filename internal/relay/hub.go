@@ -3,6 +3,7 @@
 package relay
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"sync"
@@ -20,6 +21,10 @@ const (
 	maxMessageSize = 512 * 1024 // 512 KB
 )
 
+// ApprovalPersistFn is called by the hub when an approval_request arrives,
+// so the caller (server) can persist it to the database.
+type ApprovalPersistFn func(ctx context.Context, approval *protocol.ApprovalRequest, userID string)
+
 // Hub routes messages between connected host agents and browser clients.
 // All public methods are goroutine-safe.
 type Hub struct {
@@ -32,6 +37,9 @@ type Hub struct {
 	// requestID → channel that receives the ApprovalResponse.
 	pendingApprovals   map[string]chan *protocol.ApprovalResponse
 	pendingApprovalsMu sync.Mutex
+
+	// onApproval is called when an approval_request arrives (for DB persistence).
+	onApproval ApprovalPersistFn
 }
 
 // NewHub creates a ready-to-use Hub.
@@ -44,22 +52,28 @@ func NewHub(st store.Store) *Hub {
 	}
 }
 
+// SetApprovalPersistFn registers a callback invoked when an approval_request arrives.
+func (h *Hub) SetApprovalPersistFn(fn ApprovalPersistFn) { h.onApproval = fn }
+
 // ── Host connections ──────────────────────────────────────────────────────────
 
 // HostConn represents a connected host agent.
 type HostConn struct {
-	id     string // hostID from DB
-	userID string
+	ID     string // hostID from DB
+	UserID string
 	conn   *websocket.Conn
 	send   chan []byte
 	hub    *Hub
 }
 
+// Conn returns the underlying WebSocket connection.
+func (hc *HostConn) Conn() *websocket.Conn { return hc.conn }
+
 // RegisterHost adds a host connection to the hub.
 func (h *Hub) RegisterHost(hostID, userID string, conn *websocket.Conn) *HostConn {
 	hc := &HostConn{
-		id:     hostID,
-		userID: userID,
+		ID:     hostID,
+		UserID: userID,
 		conn:   conn,
 		send:   make(chan []byte, 256),
 		hub:    h,
@@ -75,7 +89,7 @@ func (h *Hub) UnregisterHost(hostID string) {
 	h.mu.Lock()
 	delete(h.hosts, hostID)
 	h.mu.Unlock()
-	h.broadcastToUserBrowsers(hostID, mustJSON(map[string]string{
+	h.BroadcastToUser(h.hostUserID(hostID), mustJSON(map[string]string{
 		"type":   "host_status",
 		"hostId": hostID,
 		"status": "offline",
@@ -90,12 +104,15 @@ func (h *Hub) SendToHost(hostID string, msg any) bool {
 	if !ok {
 		return false
 	}
-	hc.send <- mustJSON(msg)
-	return true
+	select {
+	case hc.send <- mustJSON(msg):
+		return true
+	default:
+		return false
+	}
 }
 
-// RunHostWriter pumps outbound messages to the host WebSocket.
-// Runs in its own goroutine per host.
+// RunWriter pumps outbound messages to the host WebSocket.
 func (hc *HostConn) RunWriter() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
@@ -122,11 +139,10 @@ func (hc *HostConn) RunWriter() {
 	}
 }
 
-// RunHostReader reads incoming messages from the host WebSocket and routes them.
-// Runs in its own goroutine per host.
+// RunReader reads incoming messages from the host WebSocket and routes them.
 func (hc *HostConn) RunReader() {
 	defer func() {
-		hc.hub.UnregisterHost(hc.id)
+		hc.hub.UnregisterHost(hc.ID)
 		close(hc.send)
 	}()
 	hc.conn.SetReadLimit(maxMessageSize)
@@ -139,7 +155,7 @@ func (hc *HostConn) RunReader() {
 		msgType, data, err := hc.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
-				log.Printf("host %s read error: %v", hc.id, err)
+				log.Printf("host %s read error: %v", hc.ID, err)
 			}
 			return
 		}
@@ -156,8 +172,8 @@ func (hc *HostConn) RunReader() {
 
 // BrowserConn represents a connected browser tab.
 type BrowserConn struct {
-	id     string // random conn ID
-	userID string
+	ID     string // random conn ID
+	UserID string
 	conn   *websocket.Conn
 	send   chan []byte
 	hub    *Hub
@@ -166,8 +182,8 @@ type BrowserConn struct {
 // RegisterBrowser adds a browser connection to the hub.
 func (h *Hub) RegisterBrowser(connID, userID string, conn *websocket.Conn) *BrowserConn {
 	bc := &BrowserConn{
-		id:     connID,
-		userID: userID,
+		ID:     connID,
+		UserID: userID,
 		conn:   conn,
 		send:   make(chan []byte, 256),
 		hub:    h,
@@ -185,7 +201,7 @@ func (h *Hub) UnregisterBrowser(connID string) {
 	h.mu.Unlock()
 }
 
-// RunBrowserWriter pumps outbound messages to the browser WebSocket.
+// RunWriter pumps outbound messages to the browser WebSocket.
 func (bc *BrowserConn) RunWriter() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
@@ -212,10 +228,10 @@ func (bc *BrowserConn) RunWriter() {
 	}
 }
 
-// RunBrowserReader reads messages from the browser (e.g. approval decisions).
+// RunReader reads messages from the browser (approval decisions).
 func (bc *BrowserConn) RunReader() {
 	defer func() {
-		bc.hub.UnregisterBrowser(bc.id)
+		bc.hub.UnregisterBrowser(bc.ID)
 		close(bc.send)
 	}()
 	bc.conn.SetReadLimit(64 * 1024)
@@ -236,14 +252,13 @@ func (bc *BrowserConn) RunReader() {
 // ── Message routing ───────────────────────────────────────────────────────────
 
 // routePTYOutput fans out binary PTY output frames to all browsers watching
-// the session. Frame format: [0x01][16-byte sessionId][data].
+// the session. Frame: [0x01][16-byte sessionId bytes][data].
 func (h *Hub) routePTYOutput(hc *HostConn, data []byte) {
 	if len(data) < 17 || data[0] != protocol.FramePTY {
 		return
 	}
-	sessionID := string(data[1:17])
-	h.broadcastToUserBrowsers(hc.id, data) // forward raw frame; browser decodes sessionID
-	_ = sessionID
+	// Forward raw frame to all browser clients for this user.
+	h.broadcastToUserBrowsersByUserID(hc.UserID, data)
 }
 
 // routeHostMessage handles JSON control messages from a host agent.
@@ -263,9 +278,22 @@ func (h *Hub) routeHostMessage(hc *HostConn, data []byte) {
 		}
 		h.handleApprovalRequest(hc, &msg)
 
-	case protocol.TypeSessionStarted, protocol.TypeSessionStopped:
-		// Forward status updates to all browser clients of this user.
-		h.broadcastToUserBrowsers(hc.id, data)
+	case protocol.TypeSessionStarted:
+		var msg protocol.SessionStarted
+		if err := json.Unmarshal(data, &msg); err != nil {
+			return
+		}
+		// Update DB status.
+		h.store.UpdateSessionStatus(context.Background(), msg.SessionID, "running")
+		h.broadcastToUserBrowsersByUserID(hc.UserID, data)
+
+	case protocol.TypeSessionStopped:
+		var msg protocol.SessionStopped
+		if err := json.Unmarshal(data, &msg); err != nil {
+			return
+		}
+		h.store.StopSession(context.Background(), msg.SessionID, msg.ExitCode)
+		h.broadcastToUserBrowsersByUserID(hc.UserID, data)
 	}
 }
 
@@ -277,110 +305,91 @@ func (h *Hub) routeBrowserMessage(bc *BrowserConn, data []byte) {
 	if err := json.Unmarshal(data, &envelope); err != nil {
 		return
 	}
-
-	switch envelope.Type {
-	case protocol.TypeApprovalResponse:
+	if envelope.Type == protocol.TypeApprovalResponse {
 		var msg protocol.ApprovalResponse
 		if err := json.Unmarshal(data, &msg); err != nil {
 			return
 		}
-		h.handleApprovalResponse(bc, &msg)
+		h.handleApprovalResponse(&msg)
 	}
 }
 
 // ── Approval flow ─────────────────────────────────────────────────────────────
 
-// handleApprovalRequest receives an approval request from a host, persists it,
-// and pushes it to all browser clients of the owning user.
 func (h *Hub) handleApprovalRequest(hc *HostConn, msg *protocol.ApprovalRequest) {
-	// Register a channel to receive the eventual response.
+	// Persist to DB via callback (set by server to avoid import cycle).
+	if h.onApproval != nil {
+		h.onApproval(context.Background(), msg, hc.UserID)
+	}
+
+	// Register pending channel.
 	ch := make(chan *protocol.ApprovalResponse, 1)
 	h.pendingApprovalsMu.Lock()
 	h.pendingApprovals[msg.RequestID] = ch
 	h.pendingApprovalsMu.Unlock()
 
 	// Push to all browser clients for this user.
-	h.broadcastToUserBrowsers(hc.id, mustJSON(msg))
+	h.broadcastToUserBrowsersByUserID(hc.UserID, mustJSON(msg))
 }
 
-// handleApprovalResponse receives an approval decision from a browser client,
-// routes it to the host agent, and unblocks the waiting hook shim.
-func (h *Hub) handleApprovalResponse(bc *BrowserConn, msg *protocol.ApprovalResponse) {
+func (h *Hub) handleApprovalResponse(msg *protocol.ApprovalResponse) {
 	h.pendingApprovalsMu.Lock()
 	ch, ok := h.pendingApprovals[msg.RequestID]
 	if ok {
 		delete(h.pendingApprovals, msg.RequestID)
 	}
 	h.pendingApprovalsMu.Unlock()
-
 	if ok {
-		ch <- msg
+		select {
+		case ch <- msg:
+		default:
+		}
 	}
 }
 
-// WaitForApproval blocks until a browser client sends a decision for requestID.
-// The host's RunHostReader goroutine calls this after registering the pending channel.
-// Returns the decision or blocks indefinitely (no timeout by design).
-func (h *Hub) WaitForApproval(requestID string) *protocol.ApprovalResponse {
-	h.pendingApprovalsMu.Lock()
-	ch, ok := h.pendingApprovals[requestID]
-	h.pendingApprovalsMu.Unlock()
-	if !ok {
-		return nil
-	}
-	return <-ch
-}
-
-// DeliverApprovalToHost sends the approval decision back to the host agent.
+// DeliverApprovalToHost sends an approval decision to the host and unblocks
+// any pending hook shim waiting on the in-memory channel.
 func (h *Hub) DeliverApprovalToHost(hostID string, resp *protocol.ApprovalResponse) {
 	h.SendToHost(hostID, resp)
+	h.handleApprovalResponse(resp)
 }
 
 // ── Broadcast helpers ─────────────────────────────────────────────────────────
 
-// broadcastToUserBrowsers sends a message to all browser connections whose
-// userID matches the owner of the given hostID.
-func (h *Hub) broadcastToUserBrowsers(hostID string, data []byte) {
+func (h *Hub) broadcastToUserBrowsersByUserID(userID string, data []byte) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, bc := range h.browsers {
+		if bc.UserID == userID {
+			select {
+			case bc.send <- data:
+			default:
+			}
+		}
+	}
+}
+
+// BroadcastToUser sends a JSON message to all browsers of a user.
+func (h *Hub) BroadcastToUser(userID string, msg any) {
+	if userID == "" {
+		return
+	}
+	h.broadcastToUserBrowsersByUserID(userID, mustJSON(msg))
+}
+
+func (h *Hub) hostUserID(hostID string) string {
 	h.mu.RLock()
 	hc, ok := h.hosts[hostID]
 	h.mu.RUnlock()
 	if !ok {
-		return
+		return ""
 	}
-	userID := hc.userID
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	for _, bc := range h.browsers {
-		if bc.userID == userID {
-			select {
-			case bc.send <- data:
-			default:
-				// Browser is slow; drop the frame rather than block.
-			}
-		}
-	}
-}
-
-// BroadcastToUser sends a JSON message directly to all browsers of a user.
-// Used by the HTTP API to push events (e.g. host status changes).
-func (h *Hub) BroadcastToUser(userID string, msg any) {
-	data := mustJSON(msg)
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	for _, bc := range h.browsers {
-		if bc.userID == userID {
-			select {
-			case bc.send <- data:
-			default:
-			}
-		}
-	}
+	return hc.UserID
 }
 
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
 
-// Shutdown sends a server_shutdown notice to all connected hosts and browsers,
-// then closes all connections.
+// Shutdown notifies all connected clients and closes connections.
 func (h *Hub) Shutdown(reconnectIn int) {
 	msg := mustJSON(protocol.ServerShutdown{
 		Type:        protocol.TypeServerShutdown,
@@ -393,23 +402,18 @@ func (h *Hub) Shutdown(reconnectIn int) {
 		case hc.send <- msg:
 		default:
 		}
-		close(hc.send)
 	}
 	for _, bc := range h.browsers {
 		select {
 		case bc.send <- msg:
 		default:
 		}
-		close(bc.send)
 	}
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
 func mustJSON(v any) []byte {
-	b, err := json.Marshal(v)
-	if err != nil {
-		panic(err)
-	}
+	b, _ := json.Marshal(v)
 	return b
 }

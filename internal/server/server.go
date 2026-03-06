@@ -1,0 +1,166 @@
+// Package server implements the relay HTTP server: REST API, WebSocket
+// endpoints for hosts and browsers, and static web UI serving.
+package server
+
+import (
+	"context"
+	"embed"
+	"io/fs"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/sven97/agentcockpit/internal/relay"
+	"github.com/sven97/agentcockpit/internal/store"
+)
+
+// webUI holds the embedded React SPA build output.
+// The build pipeline writes to web/dist/ before `go build`.
+//
+//go:embed webdist
+var webDist embed.FS
+
+// Config holds server configuration.
+type Config struct {
+	Addr      string // e.g. ":7080"
+	Secret    string // signs tokens / HMAC
+	LocalMode bool   // no auth, implicit single user
+	DataDir   string
+}
+
+// Server is the main HTTP server.
+type Server struct {
+	cfg     Config
+	store   store.Store
+	hub     *relay.Hub
+	mux     *http.ServeMux
+	httpSrv *http.Server
+}
+
+// New creates a Server and registers all routes.
+func New(cfg Config, st store.Store, hub *relay.Hub) *Server {
+	s := &Server{
+		cfg:   cfg,
+		store: st,
+		hub:   hub,
+		mux:   http.NewServeMux(),
+	}
+	s.routes()
+	s.httpSrv = &http.Server{
+		Addr:         cfg.Addr,
+		Handler:      s.mux,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 0, // disabled — WebSocket connections are long-lived
+		IdleTimeout:  120 * time.Second,
+	}
+	return s
+}
+
+// routes registers all HTTP handlers.
+func (s *Server) routes() {
+	// Health check (unauthenticated)
+	s.mux.HandleFunc("GET /health", s.handleHealth)
+
+	// ── Install script ─────────────────────────────────────────────────────
+	// Served at agentcockpit.sh — users curl this URL.
+	// The file is embedded from docs/install.sh via the docs embed below.
+
+	// ── WebSocket endpoints ────────────────────────────────────────────────
+	s.mux.HandleFunc("/ws/host", s.handleHostWS)
+	s.mux.HandleFunc("/ws/browser", s.requireBrowserAuth(s.handleBrowserWS))
+
+	// ── Auth API ───────────────────────────────────────────────────────────
+	s.mux.HandleFunc("POST /api/auth/register", s.handleRegister)
+	s.mux.HandleFunc("POST /api/auth/login", s.handleLogin)
+	s.mux.HandleFunc("POST /api/auth/logout", s.requireAuth(s.handleLogout))
+
+	// Device authorization (RFC 8628) — host registration flow
+	s.mux.HandleFunc("POST /api/device/request", s.handleDeviceRequest)
+	s.mux.HandleFunc("GET /api/device/token", s.handleDevicePoll)
+	s.mux.HandleFunc("POST /api/device/authorize", s.requireAuth(s.handleDeviceAuthorize))
+
+	// ── User API ───────────────────────────────────────────────────────────
+	s.mux.HandleFunc("GET /api/me", s.requireAuth(s.handleMe))
+
+	// ── Hosts API ──────────────────────────────────────────────────────────
+	s.mux.HandleFunc("GET /api/hosts", s.requireAuth(s.handleListHosts))
+	s.mux.HandleFunc("DELETE /api/hosts/{id}", s.requireAuth(s.handleDeleteHost))
+
+	// ── Sessions API ───────────────────────────────────────────────────────
+	s.mux.HandleFunc("GET /api/sessions", s.requireAuth(s.handleListSessions))
+	s.mux.HandleFunc("POST /api/sessions", s.requireAuth(s.handleCreateSession))
+	s.mux.HandleFunc("GET /api/sessions/{id}", s.requireAuth(s.handleGetSession))
+	s.mux.HandleFunc("DELETE /api/sessions/{id}", s.requireAuth(s.handleKillSession))
+	s.mux.HandleFunc("GET /api/sessions/{id}/events", s.requireAuth(s.handleSessionEvents))
+
+	// ── Approvals API ──────────────────────────────────────────────────────
+	s.mux.HandleFunc("GET /api/approvals", s.requireAuth(s.handleListApprovals))
+	s.mux.HandleFunc("POST /api/approvals/{id}", s.requireAuth(s.handleResolveApproval))
+
+	// ── Web UI (SPA) — catch-all, must be last ─────────────────────────────
+	sub, err := fs.Sub(webDist, "webdist")
+	if err != nil {
+		log.Fatalf("embed web/dist: %v", err)
+	}
+	s.mux.Handle("/", http.FileServer(http.FS(sub)))
+}
+
+// Start begins listening and blocks until SIGTERM/SIGINT, then shuts down.
+func (s *Server) Start() error {
+	// Ensure the implicit admin user exists in local mode.
+	if s.cfg.LocalMode {
+		if err := s.ensureLocalUser(); err != nil {
+			return err
+		}
+	}
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	errCh := make(chan error, 1)
+	go func() {
+		log.Printf("listening on %s (local=%v)", s.cfg.Addr, s.cfg.LocalMode)
+		if err := s.httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- err
+		}
+	}()
+
+	select {
+	case err := <-errCh:
+		return err
+	case sig := <-quit:
+		log.Printf("received %s, shutting down", sig)
+	}
+
+	// Notify all WebSocket clients.
+	s.hub.Shutdown(10)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return s.httpSrv.Shutdown(ctx)
+}
+
+// handleHealth returns server status.
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// ensureLocalUser creates an implicit admin user for local mode if none exist.
+func (s *Server) ensureLocalUser() error {
+	ctx := context.Background()
+	u, err := s.store.GetUserByEmail(ctx, "local@localhost")
+	if err != nil {
+		return err
+	}
+	if u != nil {
+		return nil // already exists
+	}
+	return s.store.CreateUser(ctx, &store.User{
+		Email: "local@localhost",
+		Name:  "Local User",
+		Role:  "admin",
+	})
+}

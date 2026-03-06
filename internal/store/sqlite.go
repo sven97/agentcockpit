@@ -227,9 +227,9 @@ func (s *sqliteStore) GetUserByGitHubID(ctx context.Context, githubID string) (*
 
 func (s *sqliteStore) scanUser(row *sql.Row) (*User, error) {
 	var u User
-	var passwordHash, githubID, deletedAt sql.NullString
+	var passwordHash, githubID, createdAt, updatedAt, deletedAt sql.NullString
 	err := row.Scan(&u.ID, &u.Email, &u.Name, &passwordHash, &githubID,
-		&u.Role, &u.CreatedAt, &u.UpdatedAt, &deletedAt)
+		&u.Role, &createdAt, &updatedAt, &deletedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -238,6 +238,12 @@ func (s *sqliteStore) scanUser(row *sql.Row) (*User, error) {
 	}
 	u.PasswordHash = passwordHash.String
 	u.GitHubID = githubID.String
+	if t := parseTime(createdAt); t != nil {
+		u.CreatedAt = *t
+	}
+	if t := parseTime(updatedAt); t != nil {
+		u.UpdatedAt = *t
+	}
 	u.DeletedAt = parseTime(deletedAt)
 	return &u, nil
 }
@@ -261,11 +267,11 @@ func (s *sqliteStore) CreateAuthToken(ctx context.Context, t *AuthToken) error {
 
 func (s *sqliteStore) GetAuthToken(ctx context.Context, tokenHash string) (*AuthToken, error) {
 	var t AuthToken
-	var lastUsed, revoked sql.NullString
+	var expiresAt, createdAt, lastUsed, revoked sql.NullString
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, user_id, token_hash, expires_at, created_at, last_used_at, user_agent, ip_address, revoked_at
 		FROM auth_tokens WHERE token_hash = ?`, tokenHash).Scan(
-		&t.ID, &t.UserID, &t.TokenHash, &t.ExpiresAt, &t.CreatedAt,
+		&t.ID, &t.UserID, &t.TokenHash, &expiresAt, &createdAt,
 		&lastUsed, &t.UserAgent, &t.IPAddress, &revoked,
 	)
 	if err == sql.ErrNoRows {
@@ -273,6 +279,12 @@ func (s *sqliteStore) GetAuthToken(ctx context.Context, tokenHash string) (*Auth
 	}
 	if err != nil {
 		return nil, err
+	}
+	if v := parseTime(expiresAt); v != nil {
+		t.ExpiresAt = *v
+	}
+	if v := parseTime(createdAt); v != nil {
+		t.CreatedAt = *v
 	}
 	t.LastUsedAt = parseTime(lastUsed)
 	t.RevokedAt = parseTime(revoked)
@@ -319,9 +331,9 @@ func (s *sqliteStore) GetDeviceAuthorizationByUserCode(ctx context.Context, user
 
 func (s *sqliteStore) scanDeviceAuth(row *sql.Row) (*DeviceAuthorization, error) {
 	var d DeviceAuthorization
-	var userID, hostToken, platform, hostname, authorizedAt sql.NullString
+	var userID, hostToken, platform, hostname, expiresAt, authorizedAt, createdAt sql.NullString
 	err := row.Scan(&d.DeviceCode, &d.UserCode, &userID, &hostToken,
-		&platform, &hostname, &d.ExpiresAt, &authorizedAt, &d.CreatedAt)
+		&platform, &hostname, &expiresAt, &authorizedAt, &createdAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -332,6 +344,12 @@ func (s *sqliteStore) scanDeviceAuth(row *sql.Row) (*DeviceAuthorization, error)
 	d.HostToken = hostToken.String
 	d.Platform = platform.String
 	d.Hostname = hostname.String
+	if v := parseTime(expiresAt); v != nil {
+		d.ExpiresAt = *v
+	}
+	if v := parseTime(createdAt); v != nil {
+		d.CreatedAt = *v
+	}
 	d.AuthorizedAt = parseTime(authorizedAt)
 	return &d, nil
 }
@@ -401,22 +419,22 @@ func (s *sqliteStore) ListHostsByUser(ctx context.Context, userID string) ([]*Ho
 	defer rows.Close()
 	var hosts []*Host
 	for rows.Next() {
-		h, err := s.scanHost(nil)
-		_ = h
 		var hh Host
-		var platform, hostname, agentVersion, lastSeen, deletedAt sql.NullString
-		if err = rows.Scan(&hh.ID, &hh.UserID, &hh.Name, &hh.TokenHash, &hh.Status,
-			&platform, &hostname, &agentVersion, &lastSeen, &hh.CreatedAt, &deletedAt); err != nil {
+		var platform, hostname, agentVersion, lastSeen, createdAt, deletedAt sql.NullString
+		if err := rows.Scan(&hh.ID, &hh.UserID, &hh.Name, &hh.TokenHash, &hh.Status,
+			&platform, &hostname, &agentVersion, &lastSeen, &createdAt, &deletedAt); err != nil {
 			return nil, err
 		}
 		hh.Platform = platform.String
 		hh.Hostname = hostname.String
 		hh.AgentVersion = agentVersion.String
 		hh.LastSeenAt = parseTime(lastSeen)
+		if v := parseTime(createdAt); v != nil {
+			hh.CreatedAt = *v
+		}
 		hh.DeletedAt = parseTime(deletedAt)
 		hosts = append(hosts, &hh)
 	}
-	_ = err
 	return hosts, rows.Err()
 }
 
@@ -425,9 +443,9 @@ func (s *sqliteStore) scanHost(row *sql.Row) (*Host, error) {
 		return nil, nil
 	}
 	var h Host
-	var platform, hostname, agentVersion, lastSeen, deletedAt sql.NullString
+	var platform, hostname, agentVersion, lastSeen, createdAt, deletedAt sql.NullString
 	err := row.Scan(&h.ID, &h.UserID, &h.Name, &h.TokenHash, &h.Status,
-		&platform, &hostname, &agentVersion, &lastSeen, &h.CreatedAt, &deletedAt)
+		&platform, &hostname, &agentVersion, &lastSeen, &createdAt, &deletedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -438,6 +456,9 @@ func (s *sqliteStore) scanHost(row *sql.Row) (*Host, error) {
 	h.Hostname = hostname.String
 	h.AgentVersion = agentVersion.String
 	h.LastSeenAt = parseTime(lastSeen)
+	if v := parseTime(createdAt); v != nil {
+		h.CreatedAt = *v
+	}
 	h.DeletedAt = parseTime(deletedAt)
 	return &h, nil
 }
@@ -492,16 +513,19 @@ func (s *sqliteStore) ListSessionsByUser(ctx context.Context, userID string, lim
 	var sessions []*Session
 	for rows.Next() {
 		var sess Session
-		var name, envJSON, exitCode, startedAt, stoppedAt, deletedAt sql.NullString
+		var name, envJSON, exitCode, startedAt, stoppedAt, createdAt, deletedAt sql.NullString
 		if err := rows.Scan(&sess.ID, &sess.UserID, &sess.HostID, &name,
 			&sess.AgentType, &sess.WorkingDir, &sess.Command, &envJSON,
-			&sess.Status, &exitCode, &startedAt, &stoppedAt, &sess.CreatedAt, &deletedAt); err != nil {
+			&sess.Status, &exitCode, &startedAt, &stoppedAt, &createdAt, &deletedAt); err != nil {
 			return nil, err
 		}
 		sess.Name = name.String
 		sess.EnvJSON = envJSON.String
 		sess.StartedAt = parseTime(startedAt)
 		sess.StoppedAt = parseTime(stoppedAt)
+		if v := parseTime(createdAt); v != nil {
+			sess.CreatedAt = *v
+		}
 		sess.DeletedAt = parseTime(deletedAt)
 		sessions = append(sessions, &sess)
 	}
@@ -521,16 +545,19 @@ func (s *sqliteStore) ListActiveSessionsByHost(ctx context.Context, hostID strin
 	var sessions []*Session
 	for rows.Next() {
 		var sess Session
-		var name, envJSON, exitCode, startedAt, stoppedAt, deletedAt sql.NullString
+		var name, envJSON, exitCode, startedAt, stoppedAt, createdAt, deletedAt sql.NullString
 		if err := rows.Scan(&sess.ID, &sess.UserID, &sess.HostID, &name,
 			&sess.AgentType, &sess.WorkingDir, &sess.Command, &envJSON,
-			&sess.Status, &exitCode, &startedAt, &stoppedAt, &sess.CreatedAt, &deletedAt); err != nil {
+			&sess.Status, &exitCode, &startedAt, &stoppedAt, &createdAt, &deletedAt); err != nil {
 			return nil, err
 		}
 		sess.Name = name.String
 		sess.EnvJSON = envJSON.String
 		sess.StartedAt = parseTime(startedAt)
 		sess.StoppedAt = parseTime(stoppedAt)
+		if v := parseTime(createdAt); v != nil {
+			sess.CreatedAt = *v
+		}
 		sessions = append(sessions, &sess)
 	}
 	return sessions, rows.Err()
@@ -538,10 +565,10 @@ func (s *sqliteStore) ListActiveSessionsByHost(ctx context.Context, hostID strin
 
 func (s *sqliteStore) scanSession(row *sql.Row) (*Session, error) {
 	var sess Session
-	var name, envJSON, exitCode, startedAt, stoppedAt, deletedAt sql.NullString
+	var name, envJSON, exitCode, startedAt, stoppedAt, createdAt, deletedAt sql.NullString
 	err := row.Scan(&sess.ID, &sess.UserID, &sess.HostID, &name,
 		&sess.AgentType, &sess.WorkingDir, &sess.Command, &envJSON,
-		&sess.Status, &exitCode, &startedAt, &stoppedAt, &sess.CreatedAt, &deletedAt)
+		&sess.Status, &exitCode, &startedAt, &stoppedAt, &createdAt, &deletedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -552,6 +579,9 @@ func (s *sqliteStore) scanSession(row *sql.Row) (*Session, error) {
 	sess.EnvJSON = envJSON.String
 	sess.StartedAt = parseTime(startedAt)
 	sess.StoppedAt = parseTime(stoppedAt)
+	if v := parseTime(createdAt); v != nil {
+		sess.CreatedAt = *v
+	}
 	sess.DeletedAt = parseTime(deletedAt)
 	return &sess, nil
 }
@@ -596,8 +626,12 @@ func (s *sqliteStore) ListSessionEvents(ctx context.Context, sessionID string, a
 	var events []*SessionEvent
 	for rows.Next() {
 		var e SessionEvent
-		if err := rows.Scan(&e.ID, &e.SessionID, &e.Seq, &e.Type, &e.Data, &e.CreatedAt); err != nil {
+		var createdAt sql.NullString
+		if err := rows.Scan(&e.ID, &e.SessionID, &e.Seq, &e.Type, &e.Data, &createdAt); err != nil {
 			return nil, err
+		}
+		if v := parseTime(createdAt); v != nil {
+			e.CreatedAt = *v
 		}
 		events = append(events, &e)
 	}
@@ -621,13 +655,13 @@ func (s *sqliteStore) CreateApprovalRequest(ctx context.Context, r *ApprovalRequ
 
 func (s *sqliteStore) GetApprovalRequest(ctx context.Context, id string) (*ApprovalRequest, error) {
 	var r ApprovalRequest
-	var reason, decidedAt, decidedBy sql.NullString
+	var reason, decidedAt, decidedBy, createdAt sql.NullString
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, session_id, user_id, tool_name, tool_input, risk_level, status,
 		       decision_reason, decided_at, decided_by, created_at
 		FROM approval_requests WHERE id = ?`, id).Scan(
 		&r.ID, &r.SessionID, &r.UserID, &r.ToolName, &r.ToolInput, &r.RiskLevel, &r.Status,
-		&reason, &decidedAt, &decidedBy, &r.CreatedAt,
+		&reason, &decidedAt, &decidedBy, &createdAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -638,6 +672,9 @@ func (s *sqliteStore) GetApprovalRequest(ctx context.Context, id string) (*Appro
 	r.DecisionReason = reason.String
 	r.DecidedAt = parseTime(decidedAt)
 	r.DecidedBy = decidedBy.String
+	if v := parseTime(createdAt); v != nil {
+		r.CreatedAt = *v
+	}
 	return &r, nil
 }
 
@@ -654,14 +691,17 @@ func (s *sqliteStore) ListPendingApprovals(ctx context.Context, userID string) (
 	var requests []*ApprovalRequest
 	for rows.Next() {
 		var r ApprovalRequest
-		var reason, decidedAt, decidedBy sql.NullString
+		var reason, decidedAt, decidedBy, createdAt sql.NullString
 		if err := rows.Scan(&r.ID, &r.SessionID, &r.UserID, &r.ToolName, &r.ToolInput,
-			&r.RiskLevel, &r.Status, &reason, &decidedAt, &decidedBy, &r.CreatedAt); err != nil {
+			&r.RiskLevel, &r.Status, &reason, &decidedAt, &decidedBy, &createdAt); err != nil {
 			return nil, err
 		}
 		r.DecisionReason = reason.String
 		r.DecidedAt = parseTime(decidedAt)
 		r.DecidedBy = decidedBy.String
+		if v := parseTime(createdAt); v != nil {
+			r.CreatedAt = *v
+		}
 		requests = append(requests, &r)
 	}
 	return requests, rows.Err()
