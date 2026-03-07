@@ -673,6 +673,20 @@ header {
   letter-spacing: .03em;
 }
 
+.host-remove {
+  background: none;
+  border: none;
+  color: transparent;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color .15s;
+  flex-shrink: 0;
+}
+.host-row:hover .host-remove { color: var(--dimmer); }
+.host-remove:hover { color: var(--red) !important; }
+
 /* ── Session rows ── */
 .session-row {
   padding: 10px 20px;
@@ -1236,10 +1250,19 @@ function renderHosts() {
     <div class="status-dot ${online ? 'online' : 'offline'}"></div>
     <span class="host-name">${esc(h.Name || h.Hostname || h.ID.slice(0,8))}</span>
     <span class="host-platform">${esc(h.Platform || '?')}</span>
+    <button class="host-remove" onclick="removeHost('${esc(h.ID)}')" title="Remove host">&#x2715;</button>
   </div>
   <div class="host-meta">${esc(h.Hostname || '')}${h.Hostname ? ' · ' : ''}${online ? 'online' : 'last seen ' + lastSeen}</div>
 </div>`;
   }).join('');
+}
+
+async function removeHost(id) {
+  if (!confirm('Remove this host? The agent will stop connecting.')) return;
+  const res = await api('DELETE', `/api/hosts/${id}`);
+  if (res !== null && res?.error) { toast('Failed to remove host'); return; }
+  state.hosts = state.hosts.filter(h => h.ID !== id);
+  renderHosts();
 }
 
 function renderSessions() {
