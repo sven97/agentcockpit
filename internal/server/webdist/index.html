@@ -140,7 +140,7 @@ body::after {
 .btn-primary:hover { opacity: .85; }
 .btn-primary:disabled { opacity: .4; cursor: not-allowed; }
 
-#auth-error {
+#auth-error, #reg-error {
   font-size: 11px;
   color: var(--red);
   text-align: center;
@@ -617,6 +617,28 @@ header {
       </div>
       <div id="auth-error"></div>
       <button type="submit" class="btn-primary" id="login-btn">Sign in</button>
+      <div style="text-align:center;font-size:11px;color:var(--dim);margin-top:4px;">
+        No account? <a href="#" id="show-register" style="color:var(--green);text-decoration:none;">Register</a>
+      </div>
+    </form>
+    <form class="auth-form" id="register-form" style="display:none;">
+      <div class="field">
+        <label>Name</label>
+        <input type="text" id="reg-name" autocomplete="name" required placeholder="Your Name">
+      </div>
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="reg-email" autocomplete="email" required placeholder="you@example.com">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="reg-password" autocomplete="new-password" required placeholder="••••••••">
+      </div>
+      <div id="reg-error"></div>
+      <button type="submit" class="btn-primary" id="register-btn">Create account</button>
+      <div style="text-align:center;font-size:11px;color:var(--dim);margin-top:4px;">
+        Have an account? <a href="#" id="show-login" style="color:var(--green);text-decoration:none;">Sign in</a>
+      </div>
     </form>
   </div>
 </div>
@@ -763,6 +785,55 @@ $('login-form').addEventListener('submit', async e => {
 });
 
 $('logout-btn').addEventListener('click', logout);
+
+$('show-register').addEventListener('click', e => {
+  e.preventDefault();
+  $('login-form').style.display = 'none';
+  $('register-form').style.display = 'flex';
+  $('reg-error').textContent = '';
+  $('reg-name').focus();
+});
+
+$('show-login').addEventListener('click', e => {
+  e.preventDefault();
+  $('register-form').style.display = 'none';
+  $('login-form').style.display = 'flex';
+  $('auth-error').textContent = '';
+  $('email').focus();
+});
+
+$('register-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = $('register-btn');
+  const errEl = $('reg-error');
+  errEl.textContent = '';
+  btn.disabled = true;
+  btn.textContent = 'Creating...';
+  try {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: $('reg-name').value.trim(),
+        email: $('reg-email').value.trim(),
+        password: $('reg-password').value,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.error || 'Registration failed';
+      return;
+    }
+    state.token = data.token;
+    localStorage.setItem('ac_token', data.token);
+    showApp();
+  } catch (err) {
+    errEl.textContent = 'Network error — is the server running?';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Create account';
+  }
+});
 
 // ── Data fetching ──────────────────────────────────────────────────────────────
 
