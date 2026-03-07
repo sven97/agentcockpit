@@ -465,6 +465,131 @@ header {
 }
 .copy-btn:hover { color: var(--green); }
 
+/* ── Add Host Modal ── */
+.modal-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.75);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+.modal-backdrop.visible { display: flex; }
+
+.modal {
+  width: 480px;
+  max-width: calc(100vw - 32px);
+  background: var(--card);
+  border: 1px solid var(--border2);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-title {
+  font-size: 11px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--green);
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--dim);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.modal-close:hover { color: var(--text); }
+
+.modal-body { padding: 18px; display: flex; flex-direction: column; gap: 18px; }
+
+.modal-step {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modal-step-label {
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.modal-step-label strong { color: var(--text); }
+
+.modal-step p {
+  font-size: 11px;
+  color: var(--dim);
+  line-height: 1.6;
+}
+
+.modal-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+.modal-code-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  letter-spacing: .25em;
+  text-align: center;
+  text-transform: uppercase;
+  padding: 12px;
+  outline: none;
+  transition: border-color .15s;
+}
+.modal-code-input:focus { border-color: var(--green); }
+.modal-code-input::placeholder { letter-spacing: .1em; font-size: 12px; }
+
+.modal-error {
+  font-size: 11px;
+  color: var(--red);
+  text-align: center;
+  min-height: 14px;
+}
+
+.modal-success {
+  text-align: center;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modal-success-icon {
+  font-size: 28px;
+  color: var(--green);
+}
+
+.modal-success-text {
+  font-size: 12px;
+  color: var(--text);
+  letter-spacing: .05em;
+}
+
+.modal-success-sub {
+  font-size: 11px;
+  color: var(--dim);
+}
+
 /* ── Main columns ── */
 .columns {
   display: grid;
@@ -732,6 +857,7 @@ header {
       <div class="section-header">
         <span>Hosts</span>
         <span class="count" id="hosts-count">0</span>
+        <button class="btn-ghost" id="add-host-btn" style="margin-left:auto;padding:3px 8px;font-size:10px;">+ Add</button>
       </div>
       <div class="col-body" id="hosts-list">
         <div class="loading">Loading...</div>
@@ -744,6 +870,41 @@ header {
       </div>
       <div class="col-body" id="sessions-list">
         <div class="loading">Loading...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Host Modal -->
+<div class="modal-backdrop" id="add-host-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Connect a host</span>
+      <button class="modal-close" id="modal-close-btn">&#x2715;</button>
+    </div>
+    <div class="modal-body" id="modal-body">
+      <div class="modal-step">
+        <div class="modal-step-label"><strong>Step 1</strong> — Install the agent</div>
+        <div class="setup-cmd">
+          <code>curl -fsSL https://agentcockpit.sh | sh</code>
+          <button class="copy-btn" onclick="copyCmd(this,'curl -fsSL https://agentcockpit.sh | sh')">copy</button>
+        </div>
+      </div>
+      <hr class="modal-divider">
+      <div class="modal-step">
+        <div class="modal-step-label"><strong>Step 2</strong> — Run connect on your machine</div>
+        <div class="setup-cmd">
+          <code>agentcockpit connect</code>
+          <button class="copy-btn" onclick="copyCmd(this,'agentcockpit connect')">copy</button>
+        </div>
+        <p>It will print a code like <strong style="color:var(--text)">HAWK-3821</strong>. Enter it below.</p>
+      </div>
+      <hr class="modal-divider">
+      <div class="modal-step">
+        <div class="modal-step-label"><strong>Step 3</strong> — Enter the code</div>
+        <input class="modal-code-input" id="modal-code" placeholder="WORD-0000" maxlength="10" spellcheck="false" autocomplete="off">
+        <div class="modal-error" id="modal-error"></div>
+        <button class="btn-primary" id="modal-authorize-btn">Authorize host</button>
       </div>
     </div>
   </div>
@@ -1157,6 +1318,80 @@ function renderSessions() {
 }
 
 // ── Utilities ──────────────────────────────────────────────────────────────────
+
+// ── Add Host Modal ─────────────────────────────────────────────────────────────
+
+function openAddHostModal() {
+  const modal = $('add-host-modal');
+  $('modal-code').value = '';
+  $('modal-error').textContent = '';
+  $('modal-authorize-btn').disabled = false;
+  $('modal-authorize-btn').textContent = 'Authorize host';
+  showModalBody();
+  modal.classList.add('visible');
+  setTimeout(() => $('modal-code').focus(), 50);
+}
+
+function closeAddHostModal() {
+  $('add-host-modal').classList.remove('visible');
+}
+
+function showModalBody() {
+  $('modal-body').style.display = 'flex';
+}
+
+function showModalSuccess(hostName) {
+  $('modal-body').innerHTML = `
+<div class="modal-success">
+  <div class="modal-success-icon">&#x2713;</div>
+  <div class="modal-success-text">${esc(hostName)} authorized</div>
+  <div class="modal-success-sub">Run <code style="color:var(--green)">agentcockpit agent</code> on that machine to go online.</div>
+</div>`;
+}
+
+$('add-host-btn').addEventListener('click', openAddHostModal);
+$('modal-close-btn').addEventListener('click', closeAddHostModal);
+$('add-host-modal').addEventListener('click', e => { if (e.target === $('add-host-modal')) closeAddHostModal(); });
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAddHostModal(); });
+
+$('modal-code').addEventListener('input', e => {
+  // auto-uppercase, allow only letters/digits/hyphen
+  e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '');
+  $('modal-error').textContent = '';
+});
+
+$('modal-authorize-btn').addEventListener('click', async () => {
+  const code = $('modal-code').value.trim().toUpperCase();
+  if (!code) { $('modal-error').textContent = 'Enter the code from your terminal.'; return; }
+
+  const btn = $('modal-authorize-btn');
+  btn.disabled = true;
+  btn.textContent = 'Authorizing...';
+  $('modal-error').textContent = '';
+
+  try {
+    const res = await fetch('/api/device/authorize', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${state.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_code: code }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      $('modal-error').textContent = data.error || 'Authorization failed';
+      btn.disabled = false;
+      btn.textContent = 'Authorize host';
+      return;
+    }
+    showModalSuccess(data.host_name || code);
+    fetchAll(); // refresh hosts list
+    setTimeout(closeAddHostModal, 3000);
+  } catch {
+    $('modal-error').textContent = 'Network error';
+    btn.disabled = false;
+    btn.textContent = 'Authorize host';
+  }
+});
 
 function copyCmd(btn, text) {
   navigator.clipboard.writeText(text).then(() => {
