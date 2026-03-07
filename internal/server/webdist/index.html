@@ -27,6 +27,27 @@
   --font:     'SF Mono','Fira Code','Cascadia Code','Consolas','Courier New',monospace;
 }
 
+[data-theme="light"] {
+  --bg:       #f0f0f0;
+  --surface:  #ffffff;
+  --card:     #ffffff;
+  --border:   #e0e0e0;
+  --border2:  #cccccc;
+  --text:     #111111;
+  --dim:      #555555;  /* 7.7:1 on --bg — WCAG AA */
+  --dimmer:   #717171;  /* 4.6:1 on --bg — WCAG AA */
+  --green:    #007a42;  /* 5.1:1 on --bg — WCAG AA */
+  --green-bg: #007a4214;
+  --amber:    #b56a00;
+  --amber-bg: #b56a0014;
+  --orange:   #c2410c;
+  --orange-bg:#c2410c14;
+  --red:      #dc2626;
+  --red-bg:   #dc262614;
+  --blue:     #1d4ed8;
+  --blue-bg:  #1d4ed814;
+}
+
 *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
@@ -39,7 +60,7 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── Scan-line overlay ── */
+/* ── Scan-line overlay (dark mode only) ── */
 body::after {
   content: '';
   position: fixed;
@@ -54,6 +75,7 @@ body::after {
   pointer-events: none;
   z-index: 9999;
 }
+[data-theme="light"] body::after { display: none; }
 
 /* ── Auth Screen ── */
 #auth {
@@ -139,6 +161,7 @@ body::after {
 }
 .btn-primary:hover { opacity: .85; }
 .btn-primary:disabled { opacity: .4; cursor: not-allowed; }
+[data-theme="light"] .btn-primary { color: #fff; }
 
 #auth-error, #reg-error {
   font-size: 11px;
@@ -218,6 +241,7 @@ header {
   transition: all .15s;
 }
 .btn-ghost:hover { border-color: var(--border2); color: var(--text); }
+.btn-theme { font-size: 14px; text-transform: none; letter-spacing: 0; padding: 3px 9px; }
 
 /* ── Approvals Banner ── */
 #approvals-section {
@@ -864,6 +888,7 @@ header {
         <div class="ws-dot" id="ws-dot"></div>
         <span id="ws-label">disconnected</span>
       </div>
+      <button class="btn-ghost btn-theme" id="theme-btn" title="Toggle light/dark mode">◐</button>
       <button class="btn-ghost" id="logout-btn">Logout</button>
     </div>
   </header>
@@ -1014,6 +1039,22 @@ $('login-form').addEventListener('submit', async e => {
 });
 
 $('logout-btn').addEventListener('click', logout);
+
+// ── Theme toggle ───────────────────────────────────────────────────────────────
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  $('theme-btn').textContent = theme === 'light' ? '◑' : '◐';
+  localStorage.setItem('ac_theme', theme);
+}
+(function initTheme() {
+  const saved = localStorage.getItem('ac_theme');
+  const preferred = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  applyTheme(saved || preferred);
+})();
+$('theme-btn').addEventListener('click', () => {
+  const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+  applyTheme(next);
+});
 
 $('show-register').addEventListener('click', e => {
   e.preventDefault();
