@@ -13,6 +13,10 @@ on:
 # the container when a new :latest image is pushed. No SSH required.
 # The verify job polls /health until the running version matches the new SHA.
 
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
 jobs:
   build-and-push:
     name: Build & push image
