@@ -1243,31 +1243,7 @@ function renderHosts() {
   count.textContent = state.hosts.length;
 
   if (!state.hosts.length) {
-    el.innerHTML = `
-<div class="setup-card">
-  <div class="setup-card-title">Connect your first host</div>
-  <div class="setup-step">
-    <div class="setup-step-label">1 — Install the agent</div>
-    <div class="setup-cmd">
-      <code>curl -fsSL https://agentcockpit.sh | sh</code>
-      <button class="copy-btn" onclick="copyCmd(this,'curl -fsSL https://agentcockpit.sh | sh')">copy</button>
-    </div>
-  </div>
-  <div class="setup-step">
-    <div class="setup-step-label">2 — Authorize this host</div>
-    <div class="setup-cmd">
-      <code>agentcockpit connect</code>
-      <button class="copy-btn" onclick="copyCmd(this,'agentcockpit connect')">copy</button>
-    </div>
-  </div>
-  <div class="setup-step">
-    <div class="setup-step-label">3 — Start the agent</div>
-    <div class="setup-cmd">
-      <code>agentcockpit agent</code>
-      <button class="copy-btn" onclick="copyCmd(this,'agentcockpit agent')">copy</button>
-    </div>
-  </div>
-</div>`;
+    el.innerHTML = '<div class="empty-state">No hosts connected. Click <strong style="color:var(--text)">+ Add</strong> to get started.</div>';
     return;
   }
 
