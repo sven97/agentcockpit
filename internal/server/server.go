@@ -23,6 +23,9 @@ import (
 //go:embed webdist
 var webDist embed.FS
 
+//go:embed install.sh
+var installScript []byte
+
 // Config holds server configuration.
 type Config struct {
 	Addr      string // e.g. ":7080"
@@ -66,8 +69,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 
 	// ── Install script ─────────────────────────────────────────────────────
-	// Served at agentcockpit.sh — users curl this URL.
-	// The file is embedded from docs/install.sh via the docs embed below.
+	// Served at agentcockpit.sh / via nginx proxy_pass to /install.sh
+	s.mux.HandleFunc("GET /install.sh", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write(installScript)
+	})
 
 	// ── WebSocket endpoints ────────────────────────────────────────────────
 	s.mux.HandleFunc("/ws/host", s.handleHostWS)
