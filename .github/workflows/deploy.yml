@@ -8,12 +8,9 @@ on:
 #   GCP_PROJECT              = agentcockpit-app
 #   GCP_WORKLOAD_IDENTITY_PROVIDER = projects/536688950180/locations/global/workloadIdentityPools/github/providers/github-provider
 #   GCP_SERVICE_ACCOUNT      = github-actions@agentcockpit-app.iam.gserviceaccount.com
-#   VM_HOST                  = 136.119.228.227
-#   VM_USER                  = deploy
-#   VM_SSH_KEY               — private key from deploy key pair (see deploy/deploy-key-INSTRUCTIONS.md)
 #
-# Required GitHub repo variables (Actions → Variables):
-#   GCS_BUCKET               = agentcockpit-litestream
+# Deployment: Watchtower polls Artifact Registry every 60s and auto-updates
+# the container when a new :latest image is pushed. No SSH required.
 
 jobs:
   build-and-push:
@@ -23,15 +20,10 @@ jobs:
       contents: read
       id-token: write   # needed for Workload Identity Federation
 
-    outputs:
-      image: ${{ steps.meta.outputs.image }}
-      tag:   ${{ steps.meta.outputs.tag }}
-
     steps:
       - uses: actions/checkout@v4
 
       - name: Authenticate to GCP
-        id: auth
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
@@ -43,15 +35,6 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker us-docker.pkg.dev --quiet
 
-      - name: Compute image metadata
-        id: meta
-        run: |
-          PROJECT=${{ secrets.GCP_PROJECT }}
-          SHA=${GITHUB_SHA::8}
-          IMAGE="us-docker.pkg.dev/${PROJECT}/agentcockpit/server"
-          echo "image=${IMAGE}" >> $GITHUB_OUTPUT
-          echo "tag=${SHA}"     >> $GITHUB_OUTPUT
-
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
@@ -61,43 +44,7 @@ jobs:
           build-args: |
             VERSION=${{ github.sha }}
           tags: |
-            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
-            ${{ steps.meta.outputs.image }}:latest
+            us-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/agentcockpit/server:latest
+            us-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/agentcockpit/server:${{ github.sha }}
           cache-from: type=gha
           cache-to:   type=gha,mode=max
-
-  deploy:
-    name: Deploy to VM
-    needs: build-and-push
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1
-        with:
-          host:     ${{ secrets.VM_HOST }}
-          username: ${{ secrets.VM_USER }}
-          key:      ${{ secrets.VM_SSH_KEY }}
-          script: |
-            set -e
-
-            # Pull new image
-            IMAGE="${{ needs.build-and-push.outputs.image }}"
-            TAG="${{ needs.build-and-push.outputs.tag }}"
-
-            cd /opt/agentcockpit
-
-            # Update IMAGE_TAG in env file, pull, restart
-            export IMAGE_TAG="${TAG}"
-            docker compose --env-file /etc/agentcockpit.env \
-              pull agentcockpit
-
-            IMAGE_TAG="${TAG}" docker compose --env-file /etc/agentcockpit.env \
-              up -d --no-deps agentcockpit
-
-            # Verify it came up
-            sleep 3
-            docker compose --env-file /etc/agentcockpit.env \
-              ps agentcockpit
-
-            echo "Deployed ${IMAGE}:${TAG}"
