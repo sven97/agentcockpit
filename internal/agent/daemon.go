@@ -33,6 +33,7 @@ type Config struct {
 	Token        string `json:"token"`
 	Name         string `json:"name"`
 	AgentVersion string `json:"-"` // injected at build time
+	ConfigPath   string `json:"-"` // path to agent.json, set by the agent command
 }
 
 // wsMsg carries a WebSocket frame with its message type.
@@ -54,7 +55,8 @@ type Daemon struct {
 	wsMu   sync.Mutex
 	wsConn *websocket.Conn
 
-	send chan wsMsg // outbound to relay
+	send   chan wsMsg    // outbound to relay
+	cancel func()       // cancels the Run ctx when host_removed is received
 }
 
 // New creates a Daemon from config.
@@ -70,6 +72,8 @@ func New(cfg Config) *Daemon {
 // Run starts the daemon: connects to the relay, starts the Unix socket listener,
 // and reconnects automatically on disconnect. Blocks until ctx is cancelled.
 func (d *Daemon) Run(ctx context.Context) error {
+	ctx, d.cancel = context.WithCancel(ctx)
+
 	// Start Unix socket listener for hook shim calls.
 	go d.runSocketListener(ctx)
 
@@ -249,6 +253,17 @@ func (d *Daemon) handleRelayMessage(data []byte) {
 
 	case protocol.TypeServerShutdown:
 		log.Printf("relay is shutting down, will reconnect shortly")
+
+	case protocol.TypeHostRemoved:
+		log.Printf("host was removed from dashboard — stopping agent and removing config")
+		if d.cfg.ConfigPath != "" {
+			if err := os.Remove(d.cfg.ConfigPath); err != nil && !os.IsNotExist(err) {
+				log.Printf("warning: could not remove config %s: %v", d.cfg.ConfigPath, err)
+			}
+		}
+		if d.cancel != nil {
+			d.cancel()
+		}
 	}
 }
 

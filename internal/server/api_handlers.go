@@ -100,6 +100,9 @@ func (s *Server) handleDeleteHost(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "host not found")
 		return
 	}
+	// Notify the agent so it stops and removes its config before we delete.
+	s.hub.SendToHost(id, map[string]string{"type": protocol.TypeHostRemoved})
+
 	if err := s.store.DeleteHost(r.Context(), id); err != nil {
 		writeError(w, http.StatusInternalServerError, "db error")
 		return

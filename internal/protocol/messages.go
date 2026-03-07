@@ -17,6 +17,7 @@ const (
 	TypeSessionKill      = "session_kill"
 	TypeStdinData        = "stdin_data"
 	TypeServerShutdown   = "server_shutdown"
+	TypeHostRemoved      = "host_removed" // host was deleted; agent should stop and remove config
 
 	// Binary frame prefix byte for PTY output
 	FramePTY = 0x01

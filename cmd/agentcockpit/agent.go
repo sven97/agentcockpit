@@ -42,6 +42,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid config — run `agentcockpit connect` again")
 	}
 	cfg.AgentVersion = version
+	cfg.ConfigPath = cfgPath
 
 	log.Printf("starting agent daemon (relay=%s name=%q)", cfg.RelayURL, cfg.Name)
 
