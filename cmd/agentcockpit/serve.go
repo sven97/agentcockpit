@@ -44,6 +44,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		Secret:    envOr("AGENTCOCKPIT_SECRET", "dev-secret-change-me"),
 		LocalMode: serveLocal,
 		DataDir:   dataDir,
+		Version:   version,
 	}
 
 	srv := server.New(cfg, st, hub)

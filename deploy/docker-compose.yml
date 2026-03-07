@@ -39,16 +39,16 @@ services:
     command: ["replicate", "-config", "/etc/litestream.yml"]
 
   watchtower:
-    image: containrrr/watchtower:latest
+    image: containrrr/watchtower:1.7.1
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /root/.docker/config.json:/config.json:ro
     environment:
-      WATCHTOWER_POLL_INTERVAL: "60"        # check every 60 seconds
+      DOCKER_API_VERSION: "1.40"
+      WATCHTOWER_POLL_INTERVAL: "30"        # check every 30 seconds
       WATCHTOWER_CLEANUP: "true"            # remove old images after update
       WATCHTOWER_INCLUDE_STOPPED: "false"
-      WATCHTOWER_SCOPE: "autoupdate"
     command: agentcockpit-agentcockpit-1    # only watch this container
 
 volumes:

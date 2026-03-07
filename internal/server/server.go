@@ -29,6 +29,7 @@ type Config struct {
 	Secret    string // signs tokens / HMAC
 	LocalMode bool   // no auth, implicit single user
 	DataDir   string
+	Version   string // injected at build time via ldflags
 }
 
 // Server is the main HTTP server.
@@ -143,9 +144,9 @@ func (s *Server) Start() error {
 	return s.httpSrv.Shutdown(ctx)
 }
 
-// handleHealth returns server status.
+// handleHealth returns server status and build version.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": s.cfg.Version})
 }
 
 // ensureLocalUser creates an implicit admin user for local mode if none exist.

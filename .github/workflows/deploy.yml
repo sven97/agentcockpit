@@ -9,8 +9,9 @@ on:
 #   GCP_WORKLOAD_IDENTITY_PROVIDER = projects/536688950180/locations/global/workloadIdentityPools/github/providers/github-provider
 #   GCP_SERVICE_ACCOUNT      = github-actions@agentcockpit-app.iam.gserviceaccount.com
 #
-# Deployment: Watchtower polls Artifact Registry every 60s and auto-updates
+# Deployment: Watchtower polls Artifact Registry every 30s and auto-updates
 # the container when a new :latest image is pushed. No SSH required.
+# The verify job polls /health until the running version matches the new SHA.
 
 jobs:
   build-and-push:
@@ -48,3 +49,25 @@ jobs:
             us-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/agentcockpit/server:${{ github.sha }}
           cache-from: type=gha
           cache-to:   type=gha,mode=max
+
+  verify:
+    name: Verify deployment
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for Watchtower to deploy new version
+        env:
+          EXPECTED: ${{ github.sha }}
+        run: |
+          echo "Waiting for https://agentcockpit.app/health to report version ${EXPECTED}..."
+          for i in $(seq 1 40); do
+            VERSION=$(curl -sf https://agentcockpit.app/health | python3 -c "import sys,json; print(json.load(sys.stdin).get('version',''))" 2>/dev/null || true)
+            echo "  attempt $i: version=${VERSION}"
+            if [ "$VERSION" = "$EXPECTED" ]; then
+              echo "Deployed successfully: ${EXPECTED}"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "Timed out waiting for deployment (10 minutes)"
+          exit 1
