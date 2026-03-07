@@ -16,20 +16,54 @@ import (
 
 var connectCmd = &cobra.Command{
 	Use:   "connect",
-	Short: "Connect this machine to AgentCockpit (device authorization flow)",
+	Short: "Connect this machine to AgentCockpit",
 	RunE:  runConnect,
 }
 
-var connectRelay string
+var connectRelay, connectInvite string
 
 func init() {
 	connectCmd.Flags().StringVar(&connectRelay, "relay", "https://agentcockpit.io", "Relay server base URL")
+	connectCmd.Flags().StringVar(&connectInvite, "invite", "", "Invite token generated from the dashboard (skips browser step)")
 }
 
 func runConnect(cmd *cobra.Command, args []string) error {
 	relay := strings.TrimRight(connectRelay, "/")
 
-	// 1. Request a device code from the relay.
+	if connectInvite != "" {
+		return runConnectInvite(relay, connectInvite)
+	}
+	return runConnectDevice(relay)
+}
+
+// runConnectInvite claims a pre-generated invite token — no browser needed.
+func runConnectInvite(relay, inviteToken string) error {
+	fmt.Printf("\n  AgentCockpit — Connecting %s\n\n", hostname())
+
+	body := fmt.Sprintf(`{"invite_token":%q,"name":%q,"hostname":%q,"platform":%q}`,
+		inviteToken, hostname(), hostname(), runtime.GOOS)
+	resp, err := http.Post(relay+"/api/hosts/claim", "application/json", strings.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("cannot reach relay %s: %w", relay, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("claim failed (%s) — token may be expired or already used", resp.Status)
+	}
+
+	var cr struct {
+		HostToken string `json:"host_token"`
+		HostID    string `json:"host_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
+		return fmt.Errorf("decode claim response: %w", err)
+	}
+
+	return writeAgentConfig(relay, cr.HostToken)
+}
+
+// runConnectDevice is the original browser-based device authorization flow.
+func runConnectDevice(relay string) error {
 	resp, err := http.Post(relay+"/api/device/request", "application/json",
 		strings.NewReader(fmt.Sprintf(`{"hostname":%q,"platform":%q}`,
 			hostname(), runtime.GOOS)))
@@ -52,19 +86,16 @@ func runConnect(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("decode device response: %w", err)
 	}
 
-	// 2. Prompt user to open browser.
 	fmt.Printf("\n  AgentCockpit — Connect this machine\n\n")
 	fmt.Printf("  1. Open this URL in your browser:\n\n")
 	fmt.Printf("       %s\n\n", dr.VerifyURL)
 	fmt.Printf("  2. Enter code:  %s\n\n", dr.UserCode)
 
-	// Try to open the browser automatically.
 	if opened := openBrowser(dr.VerifyURL); opened {
 		fmt.Printf("  (browser opened automatically)\n\n")
 	}
 	fmt.Printf("  Waiting for authorization")
 
-	// 3. Poll until authorized or expired.
 	interval := time.Duration(dr.Interval) * time.Second
 	if interval < time.Second {
 		interval = 3 * time.Second
@@ -75,10 +106,8 @@ func runConnect(cmd *cobra.Command, args []string) error {
 	for time.Now().Before(deadline) {
 		time.Sleep(interval)
 		fmt.Print(".")
-
 		token, done, err := pollDeviceToken(relay, dr.DeviceCode)
 		if err != nil {
-			// Non-fatal poll error — keep trying.
 			continue
 		}
 		if done {
@@ -93,7 +122,10 @@ func runConnect(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println(" authorized!")
 
-	// 4. Write ~/.config/agentcockpit/agent.json
+	return writeAgentConfig(relay, hostToken)
+}
+
+func writeAgentConfig(relay, hostToken string) error {
 	cfgPath, err := agentConfigPath()
 	if err != nil {
 		return err
@@ -110,12 +142,8 @@ func runConnect(cmd *cobra.Command, args []string) error {
 	if err := os.WriteFile(cfgPath, data, 0600); err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}
-
-	fmt.Printf("\n  Config saved to %s\n\n", cfgPath)
-	fmt.Printf("  Start the agent daemon:\n\n")
-	fmt.Printf("    agentcockpit agent\n\n")
-	fmt.Printf("  Then install Claude Code hooks:\n\n")
-	fmt.Printf("    agentcockpit hooks setup\n\n")
+	fmt.Printf("\n  Config saved to %s\n", cfgPath)
+	fmt.Printf("  Starting agent...\n\n")
 	return nil
 }
 

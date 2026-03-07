@@ -4,10 +4,77 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/sven97/agentcockpit/internal/protocol"
 	"github.com/sven97/agentcockpit/internal/store"
 )
+
+// ── Host invite / claim ────────────────────────────────────────────────────────
+
+// handleHostInvite is called by the browser dashboard. It generates a
+// short-lived token that the CLI can claim without any browser interaction.
+func (s *Server) handleHostInvite(w http.ResponseWriter, r *http.Request) {
+	user := currentUser(r)
+	token := generateToken32()
+	s.hostInvites.Store(token, hostInvite{
+		UserID:    user.ID,
+		ExpiresAt: time.Now().Add(15 * time.Minute),
+	})
+	writeJSON(w, http.StatusCreated, map[string]string{"token": token})
+}
+
+// handleHostClaim is called by `agentcockpit connect --invite <token>`.
+// It exchanges the invite token for a permanent host token.
+func (s *Server) handleHostClaim(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		InviteToken string `json:"invite_token"`
+		Name        string `json:"name"`
+		Hostname    string `json:"hostname"`
+		Platform    string `json:"platform"`
+	}
+	if err := decodeJSON(r, &body); err != nil || body.InviteToken == "" {
+		writeError(w, http.StatusBadRequest, "invite_token required")
+		return
+	}
+
+	val, ok := s.hostInvites.LoadAndDelete(body.InviteToken)
+	if !ok {
+		writeError(w, http.StatusNotFound, "invite token not found or already used")
+		return
+	}
+	invite := val.(hostInvite)
+	if time.Now().After(invite.ExpiresAt) {
+		writeError(w, http.StatusGone, "invite token expired")
+		return
+	}
+
+	name := body.Name
+	if name == "" {
+		name = body.Hostname
+	}
+	if name == "" {
+		name = "unnamed-host"
+	}
+
+	hostToken := generateToken32()
+	host := &store.Host{
+		UserID:    invite.UserID,
+		Name:      name,
+		Hostname:  body.Hostname,
+		Platform:  body.Platform,
+		TokenHash: hashToken(hostToken),
+	}
+	if err := s.store.CreateHost(r.Context(), host); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create host")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]string{
+		"host_token": hostToken,
+		"host_id":    host.ID,
+	})
+}
 
 // ── Hosts ─────────────────────────────────────────────────────────────────────
 

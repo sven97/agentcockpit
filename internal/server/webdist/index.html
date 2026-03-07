@@ -884,27 +884,7 @@ header {
     </div>
     <div class="modal-body" id="modal-body">
       <div class="modal-step">
-        <div class="modal-step-label"><strong>Step 1</strong> — Install the agent</div>
-        <div class="setup-cmd">
-          <code>curl -fsSL https://agentcockpit.sh | sh</code>
-          <button class="copy-btn" onclick="copyCmd(this,'curl -fsSL https://agentcockpit.sh | sh')">copy</button>
-        </div>
-      </div>
-      <hr class="modal-divider">
-      <div class="modal-step">
-        <div class="modal-step-label"><strong>Step 2</strong> — Run connect on your machine</div>
-        <div class="setup-cmd">
-          <code>agentcockpit connect</code>
-          <button class="copy-btn" onclick="copyCmd(this,'agentcockpit connect')">copy</button>
-        </div>
-        <p>It will print a code like <strong style="color:var(--text)">HAWK-3821</strong>. Enter it below.</p>
-      </div>
-      <hr class="modal-divider">
-      <div class="modal-step">
-        <div class="modal-step-label"><strong>Step 3</strong> — Enter the code</div>
-        <input class="modal-code-input" id="modal-code" placeholder="WORD-0000" maxlength="10" spellcheck="false" autocomplete="off">
-        <div class="modal-error" id="modal-error"></div>
-        <button class="btn-primary" id="modal-authorize-btn">Authorize host</button>
+        <div class="modal-step-label" style="color:var(--dim);font-size:11px;">Generating secure invite...</div>
       </div>
     </div>
   </div>
@@ -1297,77 +1277,70 @@ function renderSessions() {
 
 // ── Add Host Modal ─────────────────────────────────────────────────────────────
 
-function openAddHostModal() {
-  const modal = $('add-host-modal');
-  $('modal-code').value = '';
-  $('modal-error').textContent = '';
-  $('modal-authorize-btn').disabled = false;
-  $('modal-authorize-btn').textContent = 'Authorize host';
-  showModalBody();
-  modal.classList.add('visible');
-  setTimeout(() => $('modal-code').focus(), 50);
+let _modalPollTimer = null;
+
+async function openAddHostModal() {
+  $('add-host-modal').classList.add('visible');
+  $('modal-body').innerHTML = '<div class="modal-step"><div class="modal-step-label" style="color:var(--dim)">Generating secure invite...</div></div>';
+
+  try {
+    const res = await fetch('/api/hosts/invite', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${state.token}` },
+    });
+    if (!res.ok) throw new Error('invite failed');
+    const { token } = await res.json();
+    const cmd = `curl -fsSL https://agentcockpit.sh | sh && agentcockpit connect --invite ${token}`;
+    const hostCountBefore = state.hosts.length;
+
+    $('modal-body').innerHTML = `
+<div class="modal-step">
+  <div class="modal-step-label">Run this command on your machine</div>
+  <div class="setup-cmd" style="flex-direction:column;gap:6px;align-items:stretch;">
+    <code style="word-break:break-all;line-height:1.7">${esc(cmd)}</code>
+    <button class="copy-btn" style="align-self:flex-end;" onclick="copyCmd(this,${JSON.stringify(cmd)})">copy</button>
+  </div>
+  <p style="font-size:11px;color:var(--dim);line-height:1.6;">
+    Installs the agent and connects this machine automatically.<br>
+    Invite expires in <strong style="color:var(--text)">15 minutes</strong>.
+  </p>
+</div>
+<hr class="modal-divider">
+<div id="modal-waiting" style="text-align:center;font-size:11px;color:var(--dim);padding:4px 0;">
+  <span style="animation:blink 1.2s infinite;display:inline-block">&#9679;</span>&nbsp; Waiting for host to connect...
+</div>`;
+
+    // Poll until a new host appears
+    _modalPollTimer = setInterval(async () => {
+      const hosts = await api('GET', '/api/hosts');
+      if (hosts && hosts.length > hostCountBefore) {
+        clearInterval(_modalPollTimer);
+        const newHost = hosts.find(h => !state.hosts.find(old => old.ID === h.ID));
+        state.hosts = hosts;
+        renderHosts();
+        $('modal-body').innerHTML = `
+<div class="modal-success">
+  <div class="modal-success-icon">&#x2713;</div>
+  <div class="modal-success-text">${esc(newHost ? (newHost.Name || newHost.Hostname) : 'Host')} connected</div>
+  <div class="modal-success-sub">Run <code style="color:var(--green)">agentcockpit agent</code> to bring it online.</div>
+</div>`;
+        setTimeout(closeAddHostModal, 3000);
+      }
+    }, 3000);
+  } catch {
+    $('modal-body').innerHTML = '<div class="modal-step"><div class="modal-step-label" style="color:var(--red)">Failed to generate invite. Please try again.</div></div>';
+  }
 }
 
 function closeAddHostModal() {
+  clearInterval(_modalPollTimer);
   $('add-host-modal').classList.remove('visible');
-}
-
-function showModalBody() {
-  $('modal-body').style.display = 'flex';
-}
-
-function showModalSuccess(hostName) {
-  $('modal-body').innerHTML = `
-<div class="modal-success">
-  <div class="modal-success-icon">&#x2713;</div>
-  <div class="modal-success-text">${esc(hostName)} authorized</div>
-  <div class="modal-success-sub">Run <code style="color:var(--green)">agentcockpit agent</code> on that machine to go online.</div>
-</div>`;
 }
 
 $('add-host-btn').addEventListener('click', openAddHostModal);
 $('modal-close-btn').addEventListener('click', closeAddHostModal);
 $('add-host-modal').addEventListener('click', e => { if (e.target === $('add-host-modal')) closeAddHostModal(); });
-
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAddHostModal(); });
-
-$('modal-code').addEventListener('input', e => {
-  // auto-uppercase, allow only letters/digits/hyphen
-  e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '');
-  $('modal-error').textContent = '';
-});
-
-$('modal-authorize-btn').addEventListener('click', async () => {
-  const code = $('modal-code').value.trim().toUpperCase();
-  if (!code) { $('modal-error').textContent = 'Enter the code from your terminal.'; return; }
-
-  const btn = $('modal-authorize-btn');
-  btn.disabled = true;
-  btn.textContent = 'Authorizing...';
-  $('modal-error').textContent = '';
-
-  try {
-    const res = await fetch('/api/device/authorize', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${state.token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_code: code }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      $('modal-error').textContent = data.error || 'Authorization failed';
-      btn.disabled = false;
-      btn.textContent = 'Authorize host';
-      return;
-    }
-    showModalSuccess(data.host_name || code);
-    fetchAll(); // refresh hosts list
-    setTimeout(closeAddHostModal, 3000);
-  } catch {
-    $('modal-error').textContent = 'Network error';
-    btn.disabled = false;
-    btn.textContent = 'Authorize host';
-  }
-});
 
 function copyCmd(btn, text) {
   navigator.clipboard.writeText(text).then(() => {
