@@ -170,6 +170,32 @@ func (s *Server) handleDeviceRequest(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleDevicePending returns all pending (not yet authorized, not expired) device
+// authorizations. Called by the dashboard to show "waiting to connect" machines.
+func (s *Server) handleDevicePending(w http.ResponseWriter, r *http.Request) {
+	pending, err := s.store.ListPendingDeviceAuthorizations(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "db error")
+		return
+	}
+	type safeDevice struct {
+		UserCode  string `json:"user_code"`
+		Hostname  string `json:"hostname"`
+		Platform  string `json:"platform"`
+		CreatedAt string `json:"created_at"`
+	}
+	out := make([]safeDevice, 0, len(pending))
+	for _, d := range pending {
+		out = append(out, safeDevice{
+			UserCode:  d.UserCode,
+			Hostname:  d.Hostname,
+			Platform:  d.Platform,
+			CreatedAt: d.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 // handleDevicePoll is called repeatedly by `agentcockpit connect` until authorized.
 // Returns the host token once the user has clicked Authorize in the browser.
 func (s *Server) handleDevicePoll(w http.ResponseWriter, r *http.Request) {

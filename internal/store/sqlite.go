@@ -354,6 +354,38 @@ func (s *sqliteStore) scanDeviceAuth(row *sql.Row) (*DeviceAuthorization, error)
 	return &d, nil
 }
 
+func (s *sqliteStore) ListPendingDeviceAuthorizations(ctx context.Context) ([]*DeviceAuthorization, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT device_code, user_code, user_id, host_token, platform, hostname, expires_at, authorized_at, created_at
+		FROM device_authorizations
+		WHERE authorized_at IS NULL AND expires_at > ?
+		ORDER BY created_at ASC`, now())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*DeviceAuthorization
+	for rows.Next() {
+		var d DeviceAuthorization
+		var userID, hostToken, platform, hostname, expiresAt, authorizedAt, createdAt sql.NullString
+		if err := rows.Scan(&d.DeviceCode, &d.UserCode, &userID, &hostToken,
+			&platform, &hostname, &expiresAt, &authorizedAt, &createdAt); err != nil {
+			return nil, err
+		}
+		d.UserID = userID.String
+		d.Platform = platform.String
+		d.Hostname = hostname.String
+		if v := parseTime(expiresAt); v != nil {
+			d.ExpiresAt = *v
+		}
+		if v := parseTime(createdAt); v != nil {
+			d.CreatedAt = *v
+		}
+		out = append(out, &d)
+	}
+	return out, rows.Err()
+}
+
 func (s *sqliteStore) AuthorizeDevice(ctx context.Context, deviceCode, userID, hostToken string) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE device_authorizations

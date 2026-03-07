@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -20,6 +21,12 @@ var agentCmd = &cobra.Command{
 	RunE:  runAgent,
 }
 
+var agentRelay string
+
+func init() {
+	agentCmd.Flags().StringVar(&agentRelay, "relay", "https://agentcockpit.io", "Relay server base URL")
+}
+
 func runAgent(cmd *cobra.Command, args []string) error {
 	cfgPath, err := agentConfigPath()
 	if err != nil {
@@ -27,11 +34,22 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	}
 
 	data, err := os.ReadFile(cfgPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("not connected — run `agentcockpit connect` first")
-		}
+	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("read config: %w", err)
+	}
+
+	// No config yet — run the device auth flow so the user just has to click
+	// "Authorize" in the browser, then continue straight into the daemon.
+	if os.IsNotExist(err) {
+		relay := strings.TrimRight(agentRelay, "/")
+		fmt.Printf("\n  No configuration found. Starting authorization...\n\n")
+		if err := runConnectDevice(relay); err != nil {
+			return err
+		}
+		data, err = os.ReadFile(cfgPath)
+		if err != nil {
+			return fmt.Errorf("read config after connect: %w", err)
+		}
 	}
 
 	var cfg agent.Config

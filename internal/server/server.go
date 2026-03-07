@@ -96,6 +96,7 @@ func (s *Server) routes() {
 	// Device authorization (RFC 8628) — host registration flow
 	s.mux.HandleFunc("POST /api/device/request", s.handleDeviceRequest)
 	s.mux.HandleFunc("GET /api/device/token", s.handleDevicePoll)
+	s.mux.HandleFunc("GET /api/device/pending", s.requireAuth(s.handleDevicePending))
 	s.mux.HandleFunc("POST /api/device/authorize", s.requireAuth(s.handleDeviceAuthorize))
 
 	// ── User API ───────────────────────────────────────────────────────────

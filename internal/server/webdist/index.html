@@ -687,6 +687,20 @@ header {
 .host-row:hover .host-remove { color: var(--dimmer); }
 .host-remove:hover { color: var(--red) !important; }
 
+.btn-authorize {
+  margin-left: auto;
+  background: var(--amber-bg);
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  font-family: var(--font);
+  font-size: 11px;
+  padding: 2px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background .15s;
+}
+.btn-authorize:hover { background: #f5a62330; }
+
 /* ── Session rows ── */
 .session-row {
   padding: 10px 20px;
@@ -914,6 +928,7 @@ const state = {
   hosts: [],
   sessions: [],
   approvals: [],
+  pendingDevices: [],
   ws: null,
   wsState: 'disconnected',
 };
@@ -1052,15 +1067,34 @@ $('register-form').addEventListener('submit', async e => {
 // ── Data fetching ──────────────────────────────────────────────────────────────
 
 async function fetchAll() {
-  const [hosts, sessions, approvals] = await Promise.all([
+  const [hosts, sessions, approvals, pending] = await Promise.all([
     api('GET', '/api/hosts'),
     api('GET', '/api/sessions'),
     api('GET', '/api/approvals'),
+    api('GET', '/api/device/pending'),
   ]);
-  if (hosts     !== null) { state.hosts     = hosts     || []; renderHosts(); }
-  if (sessions  !== null) { state.sessions  = sessions  || []; renderSessions(); }
-  if (approvals !== null) { state.approvals = approvals || []; renderApprovals(); }
+  if (hosts    !== null) { state.hosts          = hosts    || []; renderHosts(); }
+  if (sessions !== null) { state.sessions       = sessions || []; renderSessions(); }
+  if (approvals!== null) { state.approvals      = approvals|| []; renderApprovals(); }
+  if (pending  !== null) { state.pendingDevices = pending  || []; renderHosts(); }
 }
+
+// Poll for pending device authorizations every 4s so new `agentcockpit agent`
+// invocations appear in the dashboard without a manual refresh.
+setInterval(async () => {
+  if (!state.token) return;
+  const pending = await api('GET', '/api/device/pending');
+  if (pending !== null) {
+    const changed = JSON.stringify(pending) !== JSON.stringify(state.pendingDevices);
+    state.pendingDevices = pending || [];
+    if (changed) {
+      renderHosts();
+      // Also refresh host list in case an authorization just completed.
+      const hosts = await api('GET', '/api/hosts');
+      if (hosts !== null) { state.hosts = hosts || []; renderHosts(); }
+    }
+  }
+}, 4000);
 
 // ── WebSocket ──────────────────────────────────────────────────────────────────
 
@@ -1233,15 +1267,26 @@ function toggleInput(btn) {
 
 function renderHosts() {
   const el = $('hosts-list');
-  const count = $('hosts-count');
-  count.textContent = state.hosts.length;
+  const total = state.hosts.length + state.pendingDevices.length;
+  $('hosts-count').textContent = total;
 
-  if (!state.hosts.length) {
+  if (!total) {
     el.innerHTML = '<div class="empty-state">No hosts connected. Click <strong style="color:var(--text)">+ Add</strong> to get started.</div>';
     return;
   }
 
-  el.innerHTML = state.hosts.map(h => {
+  const pendingHtml = state.pendingDevices.map(d => `
+<div class="host-row">
+  <div class="host-row-top">
+    <div class="status-dot" style="background:var(--amber);animation:blink 1s infinite"></div>
+    <span class="host-name">${esc(d.hostname || 'unknown')}</span>
+    <span class="host-platform">${esc(d.platform || '?')}</span>
+    <button class="btn-authorize" onclick="authorizeDevice('${esc(d.user_code)}','${esc(d.hostname)}')">Authorize</button>
+  </div>
+  <div class="host-meta">waiting to connect · run <code>agentcockpit agent</code> then click Authorize</div>
+</div>`).join('');
+
+  const hostHtml = state.hosts.map(h => {
     const online = h.Status === 'online';
     const lastSeen = h.LastSeenAt ? relTime(h.LastSeenAt) : '—';
     return `
@@ -1255,6 +1300,21 @@ function renderHosts() {
   <div class="host-meta">${esc(h.Hostname || '')}${h.Hostname ? ' · ' : ''}${online ? 'online' : 'last seen ' + lastSeen}</div>
 </div>`;
   }).join('');
+
+  el.innerHTML = pendingHtml + hostHtml;
+}
+
+async function authorizeDevice(userCode, hostname) {
+  const res = await api('POST', '/api/device/authorize', { user_code: userCode, name: hostname });
+  if (!res || res.error) { alert('Authorization failed — the request may have expired.'); return; }
+  // Refresh both pending and hosts
+  const [hosts, pending] = await Promise.all([
+    api('GET', '/api/hosts'),
+    api('GET', '/api/device/pending'),
+  ]);
+  if (hosts   !== null) { state.hosts          = hosts   || []; }
+  if (pending !== null) { state.pendingDevices = pending || []; }
+  renderHosts();
 }
 
 async function removeHost(id) {

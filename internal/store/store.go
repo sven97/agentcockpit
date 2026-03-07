@@ -23,6 +23,7 @@ type Store interface {
 	CreateDeviceAuthorization(ctx context.Context, d *DeviceAuthorization) error
 	GetDeviceAuthorization(ctx context.Context, deviceCode string) (*DeviceAuthorization, error)
 	GetDeviceAuthorizationByUserCode(ctx context.Context, userCode string) (*DeviceAuthorization, error)
+	ListPendingDeviceAuthorizations(ctx context.Context) ([]*DeviceAuthorization, error)
 	AuthorizeDevice(ctx context.Context, deviceCode, userID, hostToken string) error
 	ClaimDeviceToken(ctx context.Context, deviceCode string) (string, error) // returns plaintext token, sets it to NULL
 
