@@ -1321,7 +1321,7 @@ async function openAddHostModal() {
   <div class="modal-step-label">Run this command on your machine</div>
   <div class="setup-cmd" style="flex-direction:column;gap:6px;align-items:stretch;">
     <code style="word-break:break-all;line-height:1.7">${esc(cmd)}</code>
-    <button class="copy-btn" style="align-self:flex-end;" onclick="copyCmd(this,${JSON.stringify(cmd)})">copy</button>
+    <button class="copy-btn" style="align-self:flex-end;" data-cmd="${esc(cmd)}" onclick="copyCmd(this,this.dataset.cmd)">copy</button>
   </div>
   <p style="font-size:11px;color:var(--dim);line-height:1.6;">
     Installs the agent and connects this machine automatically.<br>
