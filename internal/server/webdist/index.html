@@ -406,6 +406,65 @@ header {
   letter-spacing: .04em;
 }
 
+.setup-card {
+  margin: 16px;
+  border: 1px solid var(--border2);
+  background: var(--card);
+}
+
+.setup-card-title {
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--green);
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.setup-step {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.setup-step:last-child { border-bottom: none; }
+
+.setup-step-label {
+  font-size: 10px;
+  color: var(--dim);
+  letter-spacing: .08em;
+  margin-bottom: 6px;
+}
+
+.setup-cmd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 7px 10px;
+}
+
+.setup-cmd code {
+  flex: 1;
+  font-family: var(--font);
+  font-size: 11px;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.copy-btn {
+  background: none;
+  border: none;
+  color: var(--dim);
+  font-family: var(--font);
+  font-size: 10px;
+  letter-spacing: .08em;
+  cursor: pointer;
+  padding: 2px 4px;
+  flex-shrink: 0;
+  transition: color .15s;
+}
+.copy-btn:hover { color: var(--green); }
+
 /* ── Main columns ── */
 .columns {
   display: grid;
@@ -1023,7 +1082,31 @@ function renderHosts() {
   count.textContent = state.hosts.length;
 
   if (!state.hosts.length) {
-    el.innerHTML = '<div class="empty-state">No hosts connected.<br>Run <code>agentcockpit connect</code>.</div>';
+    el.innerHTML = `
+<div class="setup-card">
+  <div class="setup-card-title">Connect your first host</div>
+  <div class="setup-step">
+    <div class="setup-step-label">1 — Install the agent</div>
+    <div class="setup-cmd">
+      <code>curl -fsSL https://agentcockpit.sh | sh</code>
+      <button class="copy-btn" onclick="copyCmd(this,'curl -fsSL https://agentcockpit.sh | sh')">copy</button>
+    </div>
+  </div>
+  <div class="setup-step">
+    <div class="setup-step-label">2 — Authorize this host</div>
+    <div class="setup-cmd">
+      <code>agentcockpit connect</code>
+      <button class="copy-btn" onclick="copyCmd(this,'agentcockpit connect')">copy</button>
+    </div>
+  </div>
+  <div class="setup-step">
+    <div class="setup-step-label">3 — Start the agent</div>
+    <div class="setup-cmd">
+      <code>agentcockpit agent</code>
+      <button class="copy-btn" onclick="copyCmd(this,'agentcockpit agent')">copy</button>
+    </div>
+  </div>
+</div>`;
     return;
   }
 
@@ -1074,6 +1157,15 @@ function renderSessions() {
 }
 
 // ── Utilities ──────────────────────────────────────────────────────────────────
+
+function copyCmd(btn, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'copied!';
+    btn.style.color = 'var(--green)';
+    setTimeout(() => { btn.textContent = orig; btn.style.color = ''; }, 1500);
+  });
+}
 
 function esc(s) {
   return String(s ?? '')
