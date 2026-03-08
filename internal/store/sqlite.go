@@ -527,6 +527,11 @@ func (s *sqliteStore) scanHost(row *sql.Row) (*Host, error) {
 	return &h, nil
 }
 
+func (s *sqliteStore) MarkAllHostsOffline(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE hosts SET status = 'offline' WHERE status = 'online'`)
+	return err
+}
+
 func (s *sqliteStore) UpdateHostStatus(ctx context.Context, id, status string, lastSeen time.Time) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE hosts SET status = ?, last_seen_at = ? WHERE id = ?`,
