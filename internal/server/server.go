@@ -84,8 +84,8 @@ func (s *Server) routes() {
 	})
 
 	// ── WebSocket endpoints ────────────────────────────────────────────────
-	s.mux.HandleFunc("/ws/host", s.handleHostWS)
-	s.mux.HandleFunc("/ws/browser", s.requireBrowserAuth(s.handleBrowserWS))
+	s.mux.HandleFunc("GET /ws/host", s.handleHostWS)
+	s.mux.HandleFunc("GET /ws/browser", s.requireBrowserAuth(s.handleBrowserWS))
 
 	// ── Auth API ───────────────────────────────────────────────────────────
 	s.mux.HandleFunc("POST /api/auth/register", s.handleRegister)
