@@ -63,5 +63,6 @@ type Store interface {
 
 	// Maintenance
 	PruneSessionEvents(ctx context.Context, olderThan time.Time) error
+	MarkStaleSessionsAsError(ctx context.Context) error
 	Close() error
 }
