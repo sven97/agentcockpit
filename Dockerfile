@@ -11,17 +11,27 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -ldflags="-s -w -X main.version=${VERSION}" \
     -o /agentcockpit ./cmd/agentcockpit
 
+# ── Litestream stage ───────────────────────────────────────────────────────────
+FROM litestream/litestream:0.3.13 AS litestream
+
 # ── Runtime stage ──────────────────────────────────────────────────────────────
-FROM gcr.io/distroless/static-debian12
+# alpine gives us a shell for the entrypoint script.
+FROM alpine:3.21
 
-COPY --from=builder /agentcockpit /agentcockpit
+RUN apk add --no-cache ca-certificates
 
-# Data directory (mount a volume here)
+COPY --from=builder    /agentcockpit              /agentcockpit
+COPY --from=litestream /usr/local/bin/litestream  /usr/local/bin/litestream
+COPY deploy/litestream.yml                        /etc/litestream.yml
+COPY deploy/entrypoint.sh                         /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 VOLUME ["/data"]
 
 ENV DATA_DIR=/data
+# Cloud Run injects PORT=8080; local default keeps 7080.
 ENV PORT=7080
 
-EXPOSE 7080
+EXPOSE 8080
 
-ENTRYPOINT ["/agentcockpit", "serve"]
+ENTRYPOINT ["/entrypoint.sh"]

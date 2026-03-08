@@ -4,13 +4,22 @@ on:
   push:
     branches: [main]
 
-# Required GitHub repo secrets:
-#   GCP_PROJECT                    = agentcockpit-app
-#   GCP_WORKLOAD_IDENTITY_PROVIDER = projects/536688950180/locations/global/workloadIdentityPools/github/providers/github-provider
-#   GCP_SERVICE_ACCOUNT            = github-actions@agentcockpit-app.iam.gserviceaccount.com
+# ── Required GitHub repo secrets ───────────────────────────────────────────────
+#   GCP_PROJECT                    GCP project ID (e.g. agentcockpit-app)
+#   GCP_WORKLOAD_IDENTITY_PROVIDER Workload Identity Federation provider
+#   GCP_SERVICE_ACCOUNT            github-actions@<project>.iam.gserviceaccount.com
+#   GCS_BUCKET                     Litestream backup bucket name
 #
-# Watchtower polls Artifact Registry every 30s and auto-updates the container
-# when a new :latest image is pushed.
+# ── One-time GCP setup (run once, then never again) ────────────────────────────
+#   See deploy/cloudrun-setup.sh for the full setup script.
+#
+# ── How deployment works ────────────────────────────────────────────────────────
+#   1. Build Docker image (litestream + agentcockpit) and push to Artifact Registry.
+#   2. gcloud run deploy pushes the new revision to Cloud Run.
+#      - Cloud Run starts the container, runs health checks.
+#      - If healthy: shifts 100% traffic to new revision automatically.
+#      - If unhealthy: keeps old revision serving, command fails with logs.
+#   No SSH, no Watchtower, no polling required.
 
 concurrency:
   group: deploy
@@ -53,24 +62,35 @@ jobs:
           cache-from: type=gha
           cache-to:   type=gha,mode=max
 
-  verify:
-    name: Verify deployment
+  deploy:
+    name: Deploy to Cloud Run
     needs: build-and-push
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
     steps:
-      - name: Wait for Watchtower to deploy new version
-        env:
-          EXPECTED: ${{ github.sha }}
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Deploy to Cloud Run
         run: |
-          echo "Waiting for https://agentcockpit.app/health to report version ${EXPECTED}..."
-          for i in $(seq 1 40); do
-            VERSION=$(curl -sf https://agentcockpit.app/health | python3 -c "import sys,json; print(json.load(sys.stdin).get('version',''))" 2>/dev/null || true)
-            echo "  attempt $i: version=${VERSION}"
-            if [ "$VERSION" = "$EXPECTED" ]; then
-              echo "Deployed successfully: ${EXPECTED}"
-              exit 0
-            fi
-            sleep 15
-          done
-          echo "Timed out waiting for deployment (10 minutes)"
-          exit 1
+          gcloud run deploy agentcockpit \
+            --image="us-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/agentcockpit/server:${{ github.sha }}" \
+            --region=us-central1 \
+            --platform=managed \
+            --min-instances=1 \
+            --max-instances=1 \
+            --cpu=1 \
+            --memory=512Mi \
+            --timeout=3600 \
+            --concurrency=1000 \
+            --allow-unauthenticated \
+            --service-account="cloudrun@${{ secrets.GCP_PROJECT }}.iam.gserviceaccount.com" \
+            --set-env-vars="DATA_DIR=/data,GCS_BUCKET=${{ secrets.GCS_BUCKET }}" \
+            --set-secrets="AGENTCOCKPIT_SECRET=agentcockpit-secret:latest" \
+            --project="${{ secrets.GCP_PROJECT }}"
