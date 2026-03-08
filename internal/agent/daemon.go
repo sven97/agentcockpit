@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"log"
-	"net"
 	"os"
 	"runtime"
 	"strings"
@@ -20,7 +19,6 @@ import (
 
 
 const (
-	socketPath    = "/tmp/agentcockpit-agent.sock"
 	reconnectMin  = 5 * time.Second
 	reconnectMax  = 60 * time.Second
 	reconnectMult = 2.0
@@ -47,10 +45,6 @@ type Daemon struct {
 	cfg      Config
 	sessions *sessionPool
 
-	// pendingApprovals maps requestID → channel awaiting relay response.
-	pendingApprovals   map[string]chan *protocol.ApprovalResponse
-	pendingApprovalsMu sync.Mutex
-
 	// wsConn is the current relay WebSocket connection (nil when disconnected).
 	wsMu   sync.Mutex
 	wsConn *websocket.Conn
@@ -62,10 +56,9 @@ type Daemon struct {
 // New creates a Daemon from config.
 func New(cfg Config) *Daemon {
 	return &Daemon{
-		cfg:              cfg,
-		sessions:         newSessionPool(),
-		pendingApprovals: make(map[string]chan *protocol.ApprovalResponse),
-		send:             make(chan wsMsg, 256),
+		cfg:      cfg,
+		sessions: newSessionPool(),
+		send:     make(chan wsMsg, 256),
 	}
 }
 
@@ -73,9 +66,6 @@ func New(cfg Config) *Daemon {
 // and reconnects automatically on disconnect. Blocks until ctx is cancelled.
 func (d *Daemon) Run(ctx context.Context) error {
 	ctx, d.cancel = context.WithCancel(ctx)
-
-	// Start Unix socket listener for hook shim calls.
-	go d.runSocketListener(ctx)
 
 	delay := reconnectMin
 	for {
@@ -215,21 +205,6 @@ func (d *Daemon) handleRelayMessage(data []byte) {
 	}
 
 	switch envelope.Type {
-	case protocol.TypeApprovalResponse:
-		var msg protocol.ApprovalResponse
-		if err := json.Unmarshal(data, &msg); err != nil {
-			return
-		}
-		d.pendingApprovalsMu.Lock()
-		ch, ok := d.pendingApprovals[msg.RequestID]
-		if ok {
-			delete(d.pendingApprovals, msg.RequestID)
-		}
-		d.pendingApprovalsMu.Unlock()
-		if ok {
-			ch <- &msg
-		}
-
 	case protocol.TypeSessionCreate:
 		var msg protocol.SessionCreate
 		if err := json.Unmarshal(data, &msg); err != nil {
@@ -286,120 +261,5 @@ func (d *Daemon) sendToRelay(msg any) {
 	default:
 		log.Printf("relay send buffer full, dropping message")
 	}
-}
-
-// ── Unix socket (hook shim interface) ────────────────────────────────────────
-
-// HookRequest is sent from `agentcockpit hook` to the daemon over the Unix socket.
-type HookRequest struct {
-	RequestID         string          `json:"requestId"`
-	SessionID         string          `json:"sessionId"`
-	ToolName          string          `json:"toolName"`
-	ToolInput         json.RawMessage `json:"toolInput"`
-	RiskLevel         string          `json:"riskLevel"`
-	InputTokens       int             `json:"inputTokens,omitempty"`
-	ContextWindowSize int             `json:"contextWindowSize,omitempty"`
-	// HasTTY is true when the hook shim has a local terminal available.
-	// In that case the user approves locally; this notification is dashboard-only.
-	HasTTY bool `json:"hasTty,omitempty"`
-}
-
-// HookResponse is sent back from the daemon to the hook shim.
-type HookResponse struct {
-	Decision string `json:"decision"` // "allow" | "deny"
-	Reason   string `json:"reason,omitempty"`
-}
-
-// runSocketListener listens on the Unix socket for hook shim calls.
-func (d *Daemon) runSocketListener(ctx context.Context) {
-	os.Remove(socketPath)
-	ln, err := net.Listen("unix", socketPath)
-	if err != nil {
-		log.Fatalf("hook socket: %v", err)
-	}
-	defer ln.Close()
-	defer os.Remove(socketPath)
-
-	go func() {
-		<-ctx.Done()
-		ln.Close()
-	}()
-
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				log.Printf("socket accept: %v", err)
-				continue
-			}
-		}
-		go d.handleHookConn(conn)
-	}
-}
-
-// handleHookConn processes a single hook shim connection.
-//
-// Two modes:
-//   - HasTTY=true  — user is at a terminal and approves locally.  We forward
-//     the request to the relay as a dashboard notification and return immediately.
-//   - HasTTY=false — headless/remote session.  We register a pending channel,
-//     forward to the relay, block until the browser sends an approval_response,
-//     then write the decision back to the shim over the same Unix socket.
-func (d *Daemon) handleHookConn(conn net.Conn) {
-	defer conn.Close()
-
-	var req HookRequest
-	if err := json.NewDecoder(conn).Decode(&req); err != nil {
-		log.Printf("hook decode: %v", err)
-		return
-	}
-
-	// Always notify the relay/dashboard.
-	d.sendToRelay(protocol.ApprovalRequest{
-		Type:              protocol.TypeApprovalRequest,
-		RequestID:         req.RequestID,
-		SessionID:         req.SessionID,
-		ToolName:          req.ToolName,
-		ToolInput:         req.ToolInput,
-		RiskLevel:         req.RiskLevel,
-		InputTokens:       req.InputTokens,
-		ContextWindowSize: req.ContextWindowSize,
-	})
-
-	if req.HasTTY {
-		// User approves at the terminal — nothing more to do here.
-		return
-	}
-
-	// Headless: register pending channel and wait for browser decision.
-	ch := make(chan *protocol.ApprovalResponse, 1)
-	d.pendingApprovalsMu.Lock()
-	d.pendingApprovals[req.RequestID] = ch
-	d.pendingApprovalsMu.Unlock()
-	defer func() {
-		d.pendingApprovalsMu.Lock()
-		delete(d.pendingApprovals, req.RequestID)
-		d.pendingApprovalsMu.Unlock()
-	}()
-
-	// Wait up to 5 minutes for a browser response; fail open on timeout.
-	timer := time.NewTimer(5 * time.Minute)
-	defer timer.Stop()
-
-	var resp HookResponse
-	select {
-	case ar := <-ch:
-		resp.Decision = ar.Decision
-		resp.Reason = ar.Reason
-	case <-timer.C:
-		resp.Decision = "allow"
-		resp.Reason = "approval timeout"
-	}
-
-	conn.SetWriteDeadline(time.Now().Add(10 * time.Second)) //nolint:errcheck
-	json.NewEncoder(conn).Encode(resp)                      //nolint:errcheck
 }
 

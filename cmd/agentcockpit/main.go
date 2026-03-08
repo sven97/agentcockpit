@@ -24,10 +24,6 @@ func init() {
 	rootCmd.AddCommand(agentCmd)
 	rootCmd.AddCommand(_daemonCmd) // hidden — called by launchd/systemd
 
-	// Hook integration (optional — enables tool approval notifications)
-	rootCmd.AddCommand(hookCmd)
-	rootCmd.AddCommand(hooksCmd)
-
 	// Server (self-hosted relay)
 	rootCmd.AddCommand(serveCmd)
 
