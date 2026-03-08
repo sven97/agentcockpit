@@ -978,15 +978,15 @@ header {
 
 #xterm-container {
   flex: 1;
+  min-height: 0; /* prevents flex child from overflowing its parent */
   overflow: hidden;
   padding: 6px 8px;
   background: #0d0d0d;
 }
 
-/* xterm.js internal overrides */
-.xterm { height: 100% !important; }
-.xterm-screen { height: 100% !important; }
-.xterm-viewport { border-radius: 0; overflow-y: auto !important; }
+/* xterm.js internal overrides — don't fight xterm's row-height math */
+.xterm { height: 100%; }
+.xterm-viewport { border-radius: 0; }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1838,8 +1838,8 @@ async function openTerminal(sessionId, name, status, live) {
   }
 
   $('term-modal').classList.add('visible');
-  // Fit after the modal is visible and the browser has laid out the container
-  requestAnimationFrame(() => { fitAddon.fit(); if (live) term.focus(); });
+  // Double rAF: first frame resolves display:flex layout, second measures stable dimensions
+  requestAnimationFrame(() => requestAnimationFrame(() => { fitAddon.fit(); if (live) term.focus(); }));
 
   // Replay stored scrollback
   try {
