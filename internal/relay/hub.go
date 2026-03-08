@@ -228,7 +228,11 @@ func (bc *BrowserConn) RunWriter() {
 				bc.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-			if err := bc.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+			msgType := websocket.TextMessage
+			if len(msg) > 0 && msg[0] == protocol.FramePTY {
+				msgType = websocket.BinaryMessage
+			}
+			if err := bc.conn.WriteMessage(msgType, msg); err != nil {
 				return
 			}
 		case <-ticker.C:
