@@ -134,9 +134,12 @@ func (s *Server) routes() {
 	}
 	// {$} anchors to end-of-path so these match exactly, not as catch-alls.
 	// Without {$}, "GET /" would intercept ALL GET requests (including /app.css).
+	// /{$} anchors root to exact match only — without it, "GET /" is a catch-all
+	// that intercepts every GET request including /app.css, /app.js, etc.
+	// Fixed paths like /login and /dashboard are already exact by default.
 	s.mux.HandleFunc("GET /{$}", servePage("landing.html"))
-	s.mux.HandleFunc("GET /login{$}", servePage("login.html"))
-	s.mux.HandleFunc("GET /dashboard{$}", servePage("dashboard.html"))
+	s.mux.HandleFunc("GET /login", servePage("login.html"))
+	s.mux.HandleFunc("GET /dashboard", servePage("dashboard.html"))
 
 	// Serve static assets (app.css, app.js, xterm assets, etc.).
 	s.mux.Handle("/", http.FileServer(http.FS(sub)))
