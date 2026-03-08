@@ -305,12 +305,24 @@ func (h *Hub) routeBrowserMessage(bc *BrowserConn, data []byte) {
 	if err := json.Unmarshal(data, &envelope); err != nil {
 		return
 	}
-	if envelope.Type == protocol.TypeApprovalResponse {
+	switch envelope.Type {
+	case protocol.TypeApprovalResponse:
 		var msg protocol.ApprovalResponse
 		if err := json.Unmarshal(data, &msg); err != nil {
 			return
 		}
 		h.handleApprovalResponse(&msg)
+	case protocol.TypeStdinData:
+		var msg protocol.StdinData
+		if err := json.Unmarshal(data, &msg); err != nil {
+			return
+		}
+		// Look up session to verify ownership and find the host.
+		sess, err := h.store.GetSession(context.Background(), msg.SessionID)
+		if err != nil || sess == nil || sess.UserID != bc.UserID {
+			return
+		}
+		h.SendToHost(sess.HostID, &msg)
 	}
 }
 
