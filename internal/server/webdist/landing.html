@@ -19,9 +19,9 @@
   <div class="home-shell">
     <div class="home-top">
       <div class="home-wordmark">AgentCockpit.app</div>
-      <h1 class="home-headline">Operate Claude Code, Codex CLI, and OpenCode from one secure control plane.</h1>
+      <h1 class="home-headline">Control Claude Code, Codex CLI, and OpenCode from one dashboard.</h1>
       <p class="home-sub">
-        AgentCockpit gives solo developers a professional approval gateway: inspect risky tool calls, approve from anywhere, and keep shipping without giving full machine autonomy to any single agent.
+        AgentCockpit is a zero-knowledge relay for AI coding sessions. You can move fast with autonomous agents while keeping final control of sensitive actions.
       </p>
       <div class="home-ctas">
         <button class="btn-home primary" id="home-open-dashboard">Open dashboard</button>
@@ -29,9 +29,23 @@
         <button class="btn-home" id="home-register">Create account</button>
       </div>
       <div class="home-proof">
-        <span class="proof-chip">Secure by default</span>
-        <span class="proof-chip">Low-latency approvals</span>
-        <span class="proof-chip">Works with existing agent tools</span>
+        <span class="proof-chip">Zero-knowledge relaying</span>
+        <span class="proof-chip">Fast approval loop</span>
+        <span class="proof-chip">Works with your current tools</span>
+      </div>
+      <div class="home-pillars">
+        <div class="pillar-card">
+          <h3>What It Is</h3>
+          <p>A control plane for AI coding sessions across your machines.</p>
+        </div>
+        <div class="pillar-card">
+          <h3>Why It Is Secure</h3>
+          <p>Session data is end-to-end encrypted. The relay routes traffic but cannot read payloads.</p>
+        </div>
+        <div class="pillar-card">
+          <h3>Why It Is Fast</h3>
+          <p>Approvals, sessions, and terminal activity stream live in one place.</p>
+        </div>
       </div>
     </div>
     <div class="home-main">
@@ -55,6 +69,24 @@
         <p class="usecase-summary" id="usecase-summary"></p>
         <div class="timeline" id="usecase-timeline"></div>
         <div class="usecase-outcome" id="usecase-outcome"></div>
+      </div>
+    </div>
+    <div class="home-cred">
+      <div class="cred-card">
+        <div class="usecase-kicker">How It Works</div>
+        <div class="cred-list">
+          <div><b>1.</b> Agent sends approval requests and PTY output through AgentCockpit.</div>
+          <div><b>2.</b> You review and approve or deny in the browser dashboard.</div>
+          <div><b>3.</b> Session continues instantly with your decision.</div>
+        </div>
+      </div>
+      <div class="cred-card">
+        <div class="usecase-kicker">Security Details</div>
+        <div class="cred-list">
+          <div><b>Crypto:</b> ECDH P-256 + HKDF-SHA-256 + AES-256-GCM.</div>
+          <div><b>Relay can see:</b> routing metadata (session/user IDs, timestamps, status).</div>
+          <div><b>Relay cannot see:</b> encrypted tool payloads, stdin, and terminal output.</div>
+        </div>
       </div>
     </div>
   </div>
