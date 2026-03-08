@@ -226,6 +226,13 @@ func (d *Daemon) handleRelayMessage(data []byte) {
 		}
 		d.sessions.writeStdin(msg.SessionID, msg.Data)
 
+	case protocol.TypeSessionResize:
+		var msg protocol.SessionResize
+		if err := json.Unmarshal(data, &msg); err != nil {
+			return
+		}
+		d.sessions.resize(msg.SessionID, msg.Cols, msg.Rows)
+
 	case protocol.TypeServerShutdown:
 		log.Printf("relay is shutting down, will reconnect shortly")
 
