@@ -9,7 +9,7 @@ Centralized AI coding session manager. Run Claude Code, Codex CLI, and other AI 
 curl -fsSL agentcockpit.sh | sh
 
 # Connect this machine
-agentcockpit connect
+agentcockpit install
 
 # Set up Claude Code hooks
 agentcockpit hooks setup

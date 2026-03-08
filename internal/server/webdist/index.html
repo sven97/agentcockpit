@@ -1359,7 +1359,7 @@ async function fetchAll() {
   if (pending  !== null) { state.pendingDevices = pending  || []; renderHosts(); }
 }
 
-// Poll for pending device authorizations every 4s so new `agentcockpit agent`
+// Poll for pending device authorizations every 4s so new `agentcockpit install`
 // invocations appear in the dashboard without a manual refresh.
 setInterval(async () => {
   if (!state.token) return;
@@ -1602,7 +1602,7 @@ function renderHosts() {
     <span class="host-platform">${esc(d.platform || '?')}</span>
     <button class="btn-authorize" onclick="authorizeDevice('${esc(d.user_code)}','${esc(d.hostname)}')">Authorize</button>
   </div>
-  <div class="host-meta">waiting to connect · run <code>agentcockpit agent</code> then click Authorize</div>
+  <div class="host-meta">waiting to connect · run <code>agentcockpit install</code> then click Authorize</div>
 </div>`).join('');
 
   const hostHtml = state.hosts.map(h => {
@@ -1730,7 +1730,7 @@ async function openAddHostModal() {
     });
     if (!res.ok) throw new Error('invite failed');
     const { token } = await res.json();
-    const cmd = `curl -fsSL https://agentcockpit.sh | sh && agentcockpit connect --invite ${token}`;
+    const cmd = `curl -fsSL https://agentcockpit.sh | sh && agentcockpit install --invite ${token}`;
     const hostCountBefore = state.hosts.length;
 
     $('modal-body').innerHTML = `
@@ -1762,7 +1762,7 @@ async function openAddHostModal() {
 <div class="modal-success">
   <div class="modal-success-icon">&#x2713;</div>
   <div class="modal-success-text">${esc(newHost ? (newHost.Name || newHost.Hostname) : 'Host')} connected</div>
-  <div class="modal-success-sub">Run <code style="color:var(--green)">agentcockpit agent</code> to bring it online.</div>
+  <div class="modal-success-sub">Daemon setup complete. Use <code style="color:var(--green)">agentcockpit status</code> to verify it is online.</div>
 </div>`;
         setTimeout(closeAddHostModal, 3000);
       }

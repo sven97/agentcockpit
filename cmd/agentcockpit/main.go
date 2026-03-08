@@ -17,9 +17,11 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	// Host commands
+	rootCmd.AddCommand(connectCmd)
 	rootCmd.AddCommand(installCmd)
 	rootCmd.AddCommand(uninstallCmd)
 	rootCmd.AddCommand(statusCmd)
+	rootCmd.AddCommand(agentCmd)
 	rootCmd.AddCommand(_daemonCmd) // hidden — called by launchd/systemd
 
 	// Hook integration (optional — enables tool approval notifications)

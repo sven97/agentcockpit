@@ -16,6 +16,12 @@ import (
 
 // _daemonCmd is the internal command invoked by launchd / systemd.
 // It is intentionally hidden — users never run this directly.
+var agentCmd = &cobra.Command{
+	Use:   "agent",
+	Short: "Run the host daemon in the foreground",
+	RunE:  runDaemon,
+}
+
 var _daemonCmd = &cobra.Command{
 	Use:    "_daemon",
 	Hidden: true,

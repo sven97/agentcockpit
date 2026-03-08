@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## Commands
 
@@ -27,12 +27,12 @@ AgentCockpit is a **relay server** that sits between host agents (running on dev
 ### Three-process flow
 
 ```
-Claude Code → [hook shim] → [agent daemon] → (WebSocket) → [relay server] → [browser]
+Codex → [hook shim] → [agent daemon] → (WebSocket) → [relay server] → [browser]
 ```
 
 1. **`agentcockpit serve`** — the relay server. Hosts connect via WebSocket (`/ws/host`), browsers connect via WebSocket (`/ws/browser`). REST API handles sessions, approvals, and auth.
 2. **`agentcockpit install`** — authorizes this machine and installs a background daemon service (launchd/systemd) that connects outbound to the relay. For debugging, `agentcockpit agent` runs the daemon in the foreground.
-3. **`agentcockpit hook`** — the hook shim, registered as Claude Code's `PreToolUse` hook. Called per tool use, connects to the daemon's Unix socket, and blocks until the user approves or rejects from the browser. Fails open (allows) if the daemon isn't running.
+3. **`agentcockpit hook`** — the hook shim, registered as Codex's `PreToolUse` hook. Called per tool use, connects to the daemon's Unix socket, and blocks until the user approves or rejects from the browser. Fails open (allows) if the daemon isn't running.
 
 ### Package map
 
@@ -51,7 +51,7 @@ The UI is a **single vanilla HTML/CSS/JS file** at `internal/server/webdist/inde
 
 ### Approval flow (critical path)
 
-1. Claude Code calls `agentcockpit hook` (stdin: tool name + input JSON)
+1. Codex calls `agentcockpit hook` (stdin: tool name + input JSON)
 2. Hook shim connects to daemon Unix socket, sends `HookRequest`, **blocks**
 3. Daemon forwards as `approval_request` WebSocket message to relay
 4. Relay persists to DB, fans out to all browser connections for that user
