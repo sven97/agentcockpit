@@ -803,7 +803,7 @@ async function openTerminal(sessionId, name, status, live) {
   const term = new Terminal({
     cursorBlink: true,
     fontSize: 13,
-    fontFamily: '"MesloLGS NF","FiraCode Nerd Font Mono","JetBrainsMono Nerd Font Mono","Symbols Nerd Font Mono","Source Code Pro","SF Mono","Fira Code","Cascadia Code",Menlo,monospace',
+    fontFamily: '"MesloLGS NF","FiraCode Nerd Font Mono","JetBrainsMono Nerd Font Mono","Source Code Pro","SF Mono","Fira Code","Cascadia Code",Menlo,"Symbols Nerd Font Mono",monospace',
     theme: { background: '#0d0d0d', foreground: '#d4d4d4', cursor: '#00d67c' },
     scrollback: 5000,
     convertEol: false,
