@@ -49,6 +49,10 @@ type Hub struct {
 	sessionTokens   map[string]*sessionTokenState
 	sessionTokensMu sync.RWMutex
 
+	// sessionSeqs tracks the next sequence number for PTY output events per session.
+	sessionSeqs   map[string]int
+	sessionSeqsMu sync.Mutex
+
 	// onApproval is called when an approval_request arrives (for DB persistence).
 	onApproval ApprovalPersistFn
 }
@@ -61,6 +65,7 @@ func NewHub(st store.Store) *Hub {
 		store:            st,
 		pendingApprovals: make(map[string]chan *protocol.ApprovalResponse),
 		sessionTokens:    make(map[string]*sessionTokenState),
+		sessionSeqs:      make(map[string]int),
 	}
 }
 
@@ -268,13 +273,35 @@ func (bc *BrowserConn) RunReader() {
 // ── Message routing ───────────────────────────────────────────────────────────
 
 // routePTYOutput fans out binary PTY output frames to all browsers watching
-// the session. Frame: [0x01][32-byte sessionId ASCII hex][data] = 33-byte header.
+// the session and persists the raw PTY bytes as a session event for replay.
+// Frame: [0x01][32-byte sessionId ASCII hex][data] = 33-byte header.
 func (h *Hub) routePTYOutput(hc *HostConn, data []byte) {
 	if len(data) < 33 || data[0] != protocol.FramePTY {
 		return
 	}
 	// Forward raw frame to all browser clients for this user.
 	h.broadcastToUserBrowsersByUserID(hc.UserID, data)
+
+	// Persist PTY bytes so they can be replayed when reopening the terminal.
+	sessionID := string(data[1:33])
+	ptyData := make([]byte, len(data)-33)
+	copy(ptyData, data[33:])
+
+	h.sessionSeqsMu.Lock()
+	h.sessionSeqs[sessionID]++
+	seq := h.sessionSeqs[sessionID]
+	h.sessionSeqsMu.Unlock()
+
+	go func() {
+		if err := h.store.AppendSessionEvent(context.Background(), &store.SessionEvent{
+			SessionID: sessionID,
+			Seq:       seq,
+			Type:      "output",
+			Data:      ptyData,
+		}); err != nil {
+			log.Printf("relay: persist PTY event seq=%d session=%s: %v", seq, sessionID, err)
+		}
+	}()
 }
 
 // routeHostMessage handles JSON control messages from a host agent.
@@ -310,6 +337,10 @@ func (h *Hub) routeHostMessage(hc *HostConn, data []byte) {
 		}
 		h.store.StopSession(context.Background(), msg.SessionID, msg.ExitCode)
 		h.broadcastToUserBrowsersByUserID(hc.UserID, data)
+		// Release the sequence counter for this session.
+		h.sessionSeqsMu.Lock()
+		delete(h.sessionSeqs, msg.SessionID)
+		h.sessionSeqsMu.Unlock()
 	}
 }
 
