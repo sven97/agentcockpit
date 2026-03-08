@@ -81,12 +81,15 @@ func (s *Server) approvalPersistFn(ctx context.Context, msg *protocol.ApprovalRe
 		return
 	}
 	s.store.CreateApprovalRequest(ctx, &store.ApprovalRequest{
-		ID:        msg.RequestID,
-		SessionID: msg.SessionID,
-		UserID:    userID,
-		ToolName:  msg.ToolName,
-		ToolInput: string(msg.ToolInput),
-		RiskLevel: msg.RiskLevel,
+		ID:                msg.RequestID,
+		SessionID:         msg.SessionID,
+		UserID:            userID,
+		// Plaintext fields — set only when E2E is not active.
+		ToolName:          msg.ToolName,
+		ToolInput:         string(msg.ToolInput),
+		RiskLevel:         msg.RiskLevel,
+		// Encrypted payload — set when E2E is active; relay never decrypts this.
+		PayloadCiphertext: msg.EncryptedPayload,
 	})
 	s.store.UpdateSessionStatus(ctx, msg.SessionID, "awaiting_approval")
 }
