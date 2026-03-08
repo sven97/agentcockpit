@@ -32,9 +32,25 @@ type session struct {
 	sendFn  func(any)
 }
 
+// shellPath returns the best available shell, trying SHELL env var and common
+// absolute paths so it works even when PATH is minimal (e.g. under launchd).
+func shellPath() string {
+	if s := os.Getenv("SHELL"); s != "" {
+		if _, err := os.Stat(s); err == nil {
+			return s
+		}
+	}
+	for _, s := range []string{"/bin/bash", "/bin/sh", "/usr/bin/bash", "/usr/bin/sh"} {
+		if _, err := os.Stat(s); err == nil {
+			return s
+		}
+	}
+	return "sh" // last resort — rely on PATH
+}
+
 // start spawns a new PTY session and streams its output to the relay.
 func (p *sessionPool) start(msg protocol.SessionCreate, sendFn func(any)) {
-	cmd := exec.Command("sh", "-c", msg.Command)
+	cmd := exec.Command(shellPath(), "-c", msg.Command)
 	cmd.Dir = msg.CWD
 	cmd.Env = append(os.Environ(),
 		"TERM=xterm-256color",
