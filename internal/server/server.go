@@ -18,8 +18,7 @@ import (
 	"github.com/sven97/agentcockpit/internal/store"
 )
 
-// webUI holds the embedded React SPA build output.
-// The build pipeline writes to web/dist/ before `go build`.
+// webDist holds the embedded static web UI files.
 //
 //go:embed webdist
 var webDist embed.FS
@@ -122,11 +121,22 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/approvals", s.requireAuth(s.handleListApprovals))
 	s.mux.HandleFunc("POST /api/approvals/{id}", s.requireAuth(s.handleResolveApproval))
 
-	// ── Web UI (SPA) — catch-all, must be last ─────────────────────────────
+	// ── Web UI pages + static assets ────────────────────────────────────────
 	sub, err := fs.Sub(webDist, "webdist")
 	if err != nil {
 		log.Fatalf("embed web/dist: %v", err)
 	}
+
+	servePage := func(name string) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			http.ServeFileFS(w, r, sub, name)
+		}
+	}
+	s.mux.HandleFunc("GET /", servePage("landing.html"))
+	s.mux.HandleFunc("GET /login", servePage("login.html"))
+	s.mux.HandleFunc("GET /dashboard", servePage("dashboard.html"))
+
+	// Keep serving static assets from webdist (app.css/app.js/xterm assets/etc.).
 	s.mux.Handle("/", http.FileServer(http.FS(sub)))
 }
 

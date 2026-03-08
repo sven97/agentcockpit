@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentCockpit</title>
+<link rel="stylesheet" href="/app.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+</head>
+<body>
+
+<!-- Home -->
+<div id="home">
+  <div class="home-shell">
+    <div class="home-top">
+      <div class="home-wordmark">AgentCockpit.app</div>
+      <h1 class="home-headline">Operate Claude Code, Codex CLI, and OpenCode from one secure control plane.</h1>
+      <p class="home-sub">
+        AgentCockpit gives solo developers a professional approval gateway: inspect risky tool calls, approve from anywhere, and keep shipping without giving full machine autonomy to any single agent.
+      </p>
+      <div class="home-ctas">
+        <button class="btn-home primary" id="home-open-dashboard">Open dashboard</button>
+        <button class="btn-home" id="home-sign-in">Sign in</button>
+        <button class="btn-home" id="home-register">Create account</button>
+      </div>
+      <div class="home-proof">
+        <span class="proof-chip">Secure by default</span>
+        <span class="proof-chip">Low-latency approvals</span>
+        <span class="proof-chip">Works with existing agent tools</span>
+      </div>
+    </div>
+    <div class="home-main">
+      <div class="usecase-list">
+        <button class="usecase-btn active" data-usecase="solo">
+          <strong>Night coding session</strong>
+          <span>Keep coding while approvals stay explicit</span>
+        </button>
+        <button class="usecase-btn" data-usecase="team">
+          <strong>Remote workstation</strong>
+          <span>Approve from laptop or phone away from desk</span>
+        </button>
+        <button class="usecase-btn" data-usecase="consulting">
+          <strong>Freelance delivery</strong>
+          <span>Show exactly what agent actions were allowed</span>
+        </button>
+      </div>
+      <div class="usecase-stage">
+        <div class="usecase-kicker">Use Case Walkthrough</div>
+        <h2 class="usecase-title" id="usecase-title"></h2>
+        <p class="usecase-summary" id="usecase-summary"></p>
+        <div class="timeline" id="usecase-timeline"></div>
+        <div class="usecase-outcome" id="usecase-outcome"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Auth -->
+<div id="auth">
+  <div class="auth-box">
+    <div class="auth-logo">
+      <div class="wordmark">AgentCockpit</div>
+      <div class="tagline">AI session control plane</div>
+    </div>
+    <form class="auth-form" id="login-form">
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="email" autocomplete="email" required placeholder="you@example.com">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="password" autocomplete="current-password" required placeholder="••••••••">
+      </div>
+      <div id="auth-error"></div>
+      <button type="submit" class="btn-primary" id="login-btn">Sign in</button>
+      <div style="text-align:center;font-size:11px;color:var(--dim);margin-top:4px;">
+        No account? <a href="#" id="show-register" style="color:var(--green);text-decoration:none;">Register</a>
+      </div>
+    </form>
+    <form class="auth-form" id="register-form" style="display:none;">
+      <div class="field">
+        <label>Name</label>
+        <input type="text" id="reg-name" autocomplete="name" required placeholder="Your Name">
+      </div>
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="reg-email" autocomplete="email" required placeholder="you@example.com">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="reg-password" autocomplete="new-password" required placeholder="••••••••">
+      </div>
+      <div id="reg-error"></div>
+      <button type="submit" class="btn-primary" id="register-btn">Create account</button>
+      <div style="text-align:center;font-size:11px;color:var(--dim);margin-top:4px;">
+        Have an account? <a href="#" id="show-login" style="color:var(--green);text-decoration:none;">Sign in</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- App -->
+<div id="app">
+  <header>
+    <span class="logo">AgentCockpit</span>
+    <div class="header-right">
+      <div class="ws-indicator">
+        <div class="ws-dot" id="ws-dot"></div>
+        <span id="ws-label">disconnected</span>
+      </div>
+      <button class="btn-approval-badge" id="approval-badge" style="display:none" title="Toggle pending approvals">
+        ⚠ <span id="approval-badge-count">0</span> pending
+      </button>
+      <button class="btn-ghost btn-theme" id="theme-btn" title="Toggle light/dark mode">◐</button>
+      <button class="btn-ghost" id="logout-btn">Logout</button>
+    </div>
+  </header>
+
+  <!-- Approvals (collapsible, opens when pending) -->
+  <div id="approvals-section">
+    <div class="section-header alert-header" id="approvals-header" style="cursor:pointer" onclick="toggleApprovals()">
+      <span>Pending Approvals</span>
+      <span class="count" id="approvals-count">0</span>
+      <span style="margin-left:auto;font-size:10px;color:var(--amber)" id="approvals-toggle-label">▾ collapse</span>
+    </div>
+    <div class="approvals-list" id="approvals-list"></div>
+  </div>
+
+  <!-- Hosts + Sessions -->
+  <div class="columns">
+    <div class="col">
+      <div class="section-header">
+        <span>Hosts</span>
+        <span class="count" id="hosts-count">0</span>
+        <button class="btn-ghost" id="add-host-btn" style="margin-left:auto;padding:3px 8px;font-size:10px;">+ Add</button>
+      </div>
+      <div class="col-body" id="hosts-list">
+        <div class="loading">Loading...</div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="section-header">
+        <span>Sessions</span>
+        <span class="count" id="sessions-count">0</span>
+        <button class="btn-ghost" id="new-session-btn" style="margin-left:auto;padding:3px 8px;font-size:10px;">+ New</button>
+      </div>
+      <div class="col-body" id="sessions-list">
+        <div class="loading">Loading...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Host Modal -->
+<div class="modal-backdrop" id="add-host-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Connect a host</span>
+      <button class="modal-close" id="modal-close-btn">&#x2715;</button>
+    </div>
+    <div class="modal-body" id="modal-body">
+      <div class="modal-step">
+        <div class="modal-step-label" style="color:var(--dim);font-size:11px;">Generating secure invite...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- New Session Modal -->
+<div class="modal-backdrop" id="new-session-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">New shell session</span>
+      <button class="modal-close" id="ns-close-btn">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-step">
+        <div class="modal-step-label">Host</div>
+        <select class="field-select" id="ns-host"></select>
+      </div>
+      <div class="modal-error" id="ns-error"></div>
+      <button class="btn-primary" id="ns-start-btn">Start shell</button>
+    </div>
+  </div>
+</div>
+
+<!-- Terminal Modal -->
+<div class="modal-backdrop" id="term-modal">
+  <div class="term-container">
+    <div class="term-header">
+      <span class="term-title" id="term-title">terminal</span>
+      <span class="status-badge running" id="term-status" style="flex-shrink:0"></span>
+      <button class="modal-close" id="term-close-btn">&#x2715;</button>
+    </div>
+    <div id="xterm-container"></div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>
