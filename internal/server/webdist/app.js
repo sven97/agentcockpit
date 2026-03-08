@@ -634,12 +634,15 @@ function renderSessions() {
     const dir = s.WorkingDir || '';
     const shortDir = dir.replace(/^\/Users\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~');
     const running = s.Status === 'running' || s.Status === 'awaiting_approval';
+    const starting = s.Status === 'starting';
     const started = s.StartedAt ? relTime(s.StartedAt) : s.CreatedAt ? relTime(s.CreatedAt) : '';
 
     const actions = `<div class="session-actions">
       ${running
         ? `<button class="btn-session-action live" onclick="openTerminal('${esc(s.ID)}','${esc(name)}','${esc(s.Status)}',true)">attach</button>
            <button class="btn-session-action danger" onclick="killSession('${esc(s.ID)}')">kill</button>`
+        : starting
+        ? `<button class="btn-session-action danger" onclick="killSession('${esc(s.ID)}')">cancel</button>`
         : `<button class="btn-session-action" onclick="openTerminal('${esc(s.ID)}','${esc(name)}','${esc(s.Status)}',false)">replay</button>`
       }
       <button class="btn-session-action danger" onclick="deleteSession('${esc(s.ID)}')">delete</button>

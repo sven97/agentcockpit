@@ -154,6 +154,12 @@ func (s *Server) Start() error {
 		}
 	}
 
+	// Any sessions still in "starting"/"running"/"awaiting_approval" at startup
+	// are dangling from a previous crash — mark them as error so they don't get stuck.
+	if err := s.store.MarkStaleSessionsAsError(context.Background()); err != nil {
+		log.Printf("warn: mark stale sessions: %v", err)
+	}
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 

@@ -206,7 +206,7 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 
 	// Tell the host agent to spawn the session.
 	// Include the user's E2E public key so the agent can derive the session key.
-	s.hub.SendToHost(body.HostID, protocol.SessionCreate{
+	sent := s.hub.SendToHost(body.HostID, protocol.SessionCreate{
 		Type:          protocol.TypeSessionCreate,
 		SessionID:     sess.ID,
 		AgentType:     body.AgentType,
@@ -214,6 +214,12 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		Command:       command,
 		UserE2EPubKey: user.E2EPublicKey, // empty string if user hasn't registered a key yet
 	})
+	if !sent {
+		// Host is offline — clean up the dangling session and return an error.
+		s.store.UpdateSessionStatus(r.Context(), sess.ID, "error")
+		writeError(w, http.StatusBadGateway, "host is offline")
+		return
+	}
 
 	writeJSON(w, http.StatusCreated, sess)
 }

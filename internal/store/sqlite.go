@@ -660,6 +660,12 @@ func (s *sqliteStore) SetSessionEphemeralPubKey(ctx context.Context, sessionID, 
 	return err
 }
 
+func (s *sqliteStore) MarkStaleSessionsAsError(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE sessions SET status = 'error' WHERE status IN ('starting', 'running', 'awaiting_approval') AND deleted_at IS NULL`)
+	return err
+}
+
 func (s *sqliteStore) UpdateSessionStatus(ctx context.Context, id, status string) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE sessions SET status = ? WHERE id = ?`, status, id)
