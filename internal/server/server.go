@@ -132,11 +132,13 @@ func (s *Server) routes() {
 			http.ServeFileFS(w, r, sub, name)
 		}
 	}
-	s.mux.HandleFunc("GET /", servePage("landing.html"))
-	s.mux.HandleFunc("GET /login", servePage("login.html"))
-	s.mux.HandleFunc("GET /dashboard", servePage("dashboard.html"))
+	// {$} anchors to end-of-path so these match exactly, not as catch-alls.
+	// Without {$}, "GET /" would intercept ALL GET requests (including /app.css).
+	s.mux.HandleFunc("GET /{$}", servePage("landing.html"))
+	s.mux.HandleFunc("GET /login{$}", servePage("login.html"))
+	s.mux.HandleFunc("GET /dashboard{$}", servePage("dashboard.html"))
 
-	// Keep serving static assets from webdist (app.css/app.js/xterm assets/etc.).
+	// Serve static assets (app.css, app.js, xterm assets, etc.).
 	s.mux.Handle("/", http.FileServer(http.FS(sub)))
 }
 
