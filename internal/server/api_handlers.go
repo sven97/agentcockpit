@@ -169,8 +169,12 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	command := body.Command
-	if command == "" {
+	if command == "" && body.AgentType != "custom" {
 		command = defaultCommand(body.AgentType)
+	}
+	if command == "" {
+		writeError(w, http.StatusBadRequest, "command required for custom agent type")
+		return
 	}
 
 	sess := &store.Session{

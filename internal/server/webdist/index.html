@@ -776,6 +776,36 @@ header {
   white-space: nowrap;
 }
 
+/* ── Token bar ── */
+.token-bar-wrap {
+  margin-top: 5px;
+  padding-left: 15px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.token-bar-track {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+.token-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--green);
+  transition: width .4s ease, background .4s;
+}
+.token-bar-fill.warn  { background: var(--amber); }
+.token-bar-fill.crit  { background: var(--red); }
+.token-bar-label {
+  font-size: 10px;
+  color: var(--dimmer);
+  white-space: nowrap;
+  letter-spacing: .03em;
+}
+
 /* ── Loading / skeleton ── */
 .loading {
   padding: 20px;
@@ -832,9 +862,40 @@ header {
   .col:first-child { display: none; }
 }
 
-/* ── Session attach button ── */
-.btn-attach {
-  margin-left: auto;
+/* ── Approval badge in header ── */
+.btn-approval-badge {
+  background: var(--amber-bg);
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  font-family: var(--font);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  cursor: pointer;
+  animation: blink 1.4s infinite;
+  transition: opacity .15s;
+}
+.btn-approval-badge:hover { opacity: .8; }
+
+/* ── Approvals collapsible ── */
+#approvals-section {
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height .25s ease;
+}
+#approvals-section.open {
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+/* ── Session action buttons ── */
+.session-actions { display: flex; gap: 5px; margin-left: auto; }
+
+.btn-session-action {
   background: none;
   border: 1px solid var(--border2);
   color: var(--dim);
@@ -846,8 +907,40 @@ header {
   cursor: pointer;
   transition: all .15s;
   flex-shrink: 0;
+  white-space: nowrap;
 }
-.btn-attach:hover { color: var(--text); border-color: var(--green); }
+.btn-session-action:hover { color: var(--text); border-color: var(--green); }
+.btn-session-action.live:hover { border-color: var(--blue); color: var(--blue); }
+.btn-session-action.danger:hover { border-color: var(--red); color: var(--red); }
+
+/* ── Session timestamp ── */
+.session-time {
+  font-size: 10px;
+  color: var(--dimmer);
+  letter-spacing: .03em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── New session / field select ── */
+.field-select {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  padding: 9px 12px;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23777'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 30px;
+}
+.field-select:focus { border-color: var(--green); }
 
 /* ── Terminal overlay ── */
 #term-modal { z-index: 1100; }
@@ -983,20 +1076,22 @@ header {
         <div class="ws-dot" id="ws-dot"></div>
         <span id="ws-label">disconnected</span>
       </div>
+      <button class="btn-approval-badge" id="approval-badge" style="display:none" title="Toggle pending approvals">
+        ⚠ <span id="approval-badge-count">0</span> pending
+      </button>
       <button class="btn-ghost btn-theme" id="theme-btn" title="Toggle light/dark mode">◐</button>
       <button class="btn-ghost" id="logout-btn">Logout</button>
     </div>
   </header>
 
-  <!-- Approvals (full-width top section) -->
+  <!-- Approvals (collapsible, opens when pending) -->
   <div id="approvals-section">
-    <div class="section-header" id="approvals-header">
+    <div class="section-header alert-header" id="approvals-header" style="cursor:pointer" onclick="toggleApprovals()">
       <span>Pending Approvals</span>
       <span class="count" id="approvals-count">0</span>
+      <span style="margin-left:auto;font-size:10px;color:var(--amber)" id="approvals-toggle-label">▾ collapse</span>
     </div>
-    <div class="approvals-list" id="approvals-list">
-      <div class="empty-state">No pending approvals — all clear.</div>
-    </div>
+    <div class="approvals-list" id="approvals-list"></div>
   </div>
 
   <!-- Hosts + Sessions -->
@@ -1015,6 +1110,7 @@ header {
       <div class="section-header">
         <span>Sessions</span>
         <span class="count" id="sessions-count">0</span>
+        <button class="btn-ghost" id="new-session-btn" style="margin-left:auto;padding:3px 8px;font-size:10px;">+ New</button>
       </div>
       <div class="col-body" id="sessions-list">
         <div class="loading">Loading...</div>
@@ -1034,6 +1130,36 @@ header {
       <div class="modal-step">
         <div class="modal-step-label" style="color:var(--dim);font-size:11px;">Generating secure invite...</div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- New Session Modal -->
+<div class="modal-backdrop" id="new-session-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">New session</span>
+      <button class="modal-close" id="ns-close-btn">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-step">
+        <div class="modal-step-label">Host</div>
+        <select class="field-select" id="ns-host"></select>
+      </div>
+      <div class="modal-step">
+        <div class="modal-step-label">Command</div>
+        <input type="text" class="modal-code-input" id="ns-command" placeholder="claude" style="letter-spacing:.05em;font-size:13px;text-align:left;text-transform:none">
+      </div>
+      <div class="modal-step">
+        <div class="modal-step-label">Working directory</div>
+        <input type="text" class="modal-code-input" id="ns-dir" placeholder="~/Developer/myproject" style="letter-spacing:.03em;font-size:13px;text-align:left;text-transform:none">
+      </div>
+      <div class="modal-step">
+        <div class="modal-step-label"><strong style="color:var(--text)">Name</strong> <span style="color:var(--dimmer);font-weight:400">(optional)</span></div>
+        <input type="text" class="modal-code-input" id="ns-name" placeholder="my session" style="letter-spacing:.03em;font-size:13px;text-align:left;text-transform:none">
+      </div>
+      <div class="modal-error" id="ns-error"></div>
+      <button class="btn-primary" id="ns-start-btn">Start session</button>
     </div>
   </div>
 </div>
@@ -1064,6 +1190,7 @@ const state = {
   hosts: [],
   sessions: [],
   approvals: [],
+  sessionTokens: {}, // sessionId → { inputTokens, contextWindowSize }
   pendingDevices: [],
   ws: null,
   wsState: 'disconnected',
@@ -1162,6 +1289,7 @@ function applyTheme(theme) {
   const preferred = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
   applyTheme(saved || preferred);
 })();
+$('approval-badge').addEventListener('click', toggleApprovals);
 $('theme-btn').addEventListener('click', () => {
   const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
   applyTheme(next);
@@ -1342,11 +1470,24 @@ function handleWS(msg) {
     case 'session_stopped': {
       const s = state.sessions.find(s => s.ID === msg.sessionId);
       if (s) { s.Status = 'stopped'; renderSessions(); }
-      if (state.attachedSession === msg.sessionId) {
+      // Update terminal badge and disable input if attached
+      if (state.attachedSession === msg.sessionId || $('term-modal').classList.contains('visible')) {
         const sb = $('term-status');
-        sb.textContent = 'stopped';
-        sb.className = 'status-badge stopped';
+        if (sb.textContent !== 'stopped') {
+          sb.textContent = 'stopped'; sb.className = 'status-badge stopped';
+          $('term-input').disabled = true;
+          $('term-input').placeholder = 'session ended';
+          state.attachedSession = null;
+        }
       }
+      break;
+    }
+    case 'session_tokens': {
+      state.sessionTokens[msg.sessionId] = {
+        inputTokens: msg.inputTokens,
+        contextWindowSize: msg.contextWindowSize,
+      };
+      renderSessions();
       break;
     }
   }
@@ -1376,22 +1517,34 @@ async function resolve(id, decision) {
 
 // ── Rendering ──────────────────────────────────────────────────────────────────
 
+function toggleApprovals() {
+  const sec = $('approvals-section');
+  const open = sec.classList.toggle('open');
+  $('approvals-toggle-label').textContent = open ? '▾ collapse' : '▸ expand';
+}
+
 function renderApprovals() {
-  const list   = $('approvals-list');
-  const header = $('approvals-header');
-  const count  = $('approvals-count');
+  const list  = $('approvals-list');
+  const count = $('approvals-count');
+  const badge = $('approval-badge');
+  const sec   = $('approvals-section');
   const n = state.approvals.length;
 
   count.textContent = n;
+  $('approval-badge-count').textContent = n;
 
   if (n > 0) {
-    header.classList.add('alert-header');
+    badge.style.display = '';
+    // Auto-expand when new approvals arrive
+    if (!sec.classList.contains('open')) sec.classList.add('open');
+    $('approvals-toggle-label').textContent = '▾ collapse';
   } else {
-    header.classList.remove('alert-header');
+    badge.style.display = 'none';
+    sec.classList.remove('open');
   }
 
   if (n === 0) {
-    list.innerHTML = '<div class="empty-state">No pending approvals — all clear.</div>';
+    list.innerHTML = '';
     return;
   }
 
@@ -1491,39 +1644,73 @@ async function removeHost(id) {
   renderHosts();
 }
 
+function renderTokenBar(tok) {
+  const pct = tok ? Math.min(100, Math.round(tok.inputTokens / tok.contextWindowSize * 100)) : 0;
+  const fillClass = pct >= 90 ? 'crit' : pct >= 70 ? 'warn' : '';
+  const label = tok
+    ? `${fmtK(tok.inputTokens)} / ${fmtK(tok.contextWindowSize)} (${pct}%)`
+    : `0 / — (0%)`;
+  return `<div class="token-bar-wrap">
+  <div class="token-bar-track"><div class="token-bar-fill ${fillClass}" style="width:${pct}%"></div></div>
+  <span class="token-bar-label">${label}</span>
+</div>`;
+}
+
+function fmtK(n) {
+  return n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : String(n);
+}
+
 function renderSessions() {
   const el = $('sessions-list');
   const count = $('sessions-count');
   count.textContent = state.sessions.length;
 
   if (!state.sessions.length) {
-    el.innerHTML = '<div class="empty-state">No sessions yet.<br>Use the API to create a session.</div>';
+    el.innerHTML = '<div class="empty-state">No sessions yet.<br>Click <strong style="color:var(--text)">+ New</strong> to start one.</div>';
     return;
   }
 
-  // Find host name for each session
   const hostMap = {};
   state.hosts.forEach(h => { hostMap[h.ID] = h.Name || h.Hostname || h.ID.slice(0,8); });
 
   el.innerHTML = state.sessions.map(s => {
-    const name = s.Name || s.AgentType || 'session';
-    const hostName = hostMap[s.HostID] || s.HostID.slice(0,8);
+    const name = s.Name || s.Command || 'session';
+    const hostName = hostMap[s.HostID] || (s.HostID || '').slice(0,8);
     const dir = s.WorkingDir || '';
     const shortDir = dir.replace(/^\/Users\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~');
-    const attachBtn = s.Status === 'running'
-      ? `<button class="btn-attach" onclick="attachSession('${esc(s.ID)}','${esc(name)}','${esc(s.Status)}')">attach</button>`
-      : '';
+    const running = s.Status === 'running' || s.Status === 'awaiting_approval';
+    const started = s.StartedAt ? relTime(s.StartedAt) : s.CreatedAt ? relTime(s.CreatedAt) : '';
+
+    const actions = `<div class="session-actions">
+      ${running
+        ? `<button class="btn-session-action live" onclick="openTerminal('${esc(s.ID)}','${esc(name)}','${esc(s.Status)}',true)">attach</button>
+           <button class="btn-session-action danger" onclick="killSession('${esc(s.ID)}')">kill</button>`
+        : `<button class="btn-session-action" onclick="openTerminal('${esc(s.ID)}','${esc(name)}','${esc(s.Status)}',false)">replay</button>`
+      }
+    </div>`;
+
+    const tok = state.sessionTokens[s.ID];
+    const tokenBar = renderTokenBar(tok);
     return `
 <div class="session-row">
   <div class="session-row-top">
-    <div class="status-dot ${s.Status === 'running' ? 'online' : 'offline'}"></div>
+    <div class="status-dot ${running ? 'online' : 'offline'}"></div>
     <span class="session-name">${esc(name)}</span>
     <span class="status-badge ${s.Status}">${s.Status}</span>
-    ${attachBtn}
+    <span class="session-time">${esc(started)}</span>
+    ${actions}
   </div>
-  <div class="session-meta">${esc(s.AgentType)} · ${esc(hostName)} · ${esc(shortDir)}</div>
+  <div class="session-meta">${esc(s.Command || s.AgentType || '')} · ${esc(hostName)} · ${esc(shortDir)}</div>
+  ${tokenBar}
 </div>`;
   }).join('');
+}
+
+async function killSession(id) {
+  if (!confirm('Kill this session?')) return;
+  await api('DELETE', `/api/sessions/${id}`);
+  const s = state.sessions.find(s => s.ID === id);
+  if (s) { s.Status = 'stopped'; renderSessions(); }
 }
 
 // ── Utilities ──────────────────────────────────────────────────────────────────
@@ -1814,18 +2001,49 @@ class AnsiRenderer {
 
 Object.assign(state, { attachedSession: null, termRenderer: null, termFlushId: null });
 
-function attachSession(sessionId, name, status) {
-  state.attachedSession = sessionId;
+// openTerminal loads a session into the terminal overlay.
+// live=true: also attaches for stdin/live PTY output (running sessions).
+// live=false: replay-only from stored events (stopped sessions).
+async function openTerminal(sessionId, name, status, live) {
+  // Stop any previous session
+  if (state.termFlushId) { clearInterval(state.termFlushId); state.termFlushId = null; }
+  state.attachedSession = live ? sessionId : null;
   state.termRenderer = new AnsiRenderer();
+
   $('term-title').textContent = name || sessionId.slice(0, 12);
   const sb = $('term-status');
-  sb.textContent = status || 'running';
-  sb.className = `status-badge ${status || 'running'}`;
-  $('term-output').innerHTML = '';
+  sb.textContent = status;
+  sb.className = `status-badge ${status}`;
+
+  const out = $('term-output');
+  out.innerHTML = '<span style="color:var(--dimmer);font-size:11px">Loading…</span>';
+
+  const inp = $('term-input');
+  inp.disabled = !live;
+  inp.placeholder = live
+    ? 'type to send input — Enter to send, Ctrl+C to interrupt'
+    : 'read-only replay';
+
   $('term-modal').classList.add('visible');
-  $('term-input').focus();
-  // Schedule periodic flush
-  state.termFlushId = setInterval(termFlush, 80);
+
+  // Replay stored events (scrollback for both live and replay)
+  try {
+    const events = await api('GET', `/api/sessions/${sessionId}/events`);
+    if (events && state.termRenderer) {
+      for (const ev of events) {
+        if (ev.Type === 'output' && ev.Data) {
+          const bytes = Uint8Array.from(atob(ev.Data), c => c.charCodeAt(0));
+          state.termRenderer.write(new TextDecoder().decode(bytes));
+        }
+      }
+      termFlush();
+    }
+  } catch {}
+
+  if (live) {
+    $('term-input').focus();
+    state.termFlushId = setInterval(termFlush, 80);
+  }
 }
 
 function detachSession() {
@@ -1855,10 +2073,70 @@ function sendInput(text) {
   state.ws.send(JSON.stringify({ type: 'stdin_data', sessionId: state.attachedSession, data: encoded }));
 }
 
+// ── New Session Modal ──────────────────────────────────────────────────────────
+
+function openNewSessionModal() {
+  const onlineHosts = state.hosts.filter(h => h.Status === 'online');
+  const sel = $('ns-host');
+  sel.innerHTML = onlineHosts.length
+    ? onlineHosts.map(h => `<option value="${esc(h.ID)}">${esc(h.Name || h.Hostname || h.ID.slice(0,8))}</option>`).join('')
+    : '<option value="">No hosts online</option>';
+  $('ns-error').textContent = '';
+  $('ns-command').value = '';
+  $('ns-dir').value = '';
+  $('ns-name').value = '';
+  $('new-session-modal').classList.add('visible');
+  $('ns-command').focus();
+}
+
+function closeNewSessionModal() {
+  $('new-session-modal').classList.remove('visible');
+}
+
+$('new-session-btn').addEventListener('click', openNewSessionModal);
+$('ns-close-btn').addEventListener('click', closeNewSessionModal);
+$('new-session-modal').addEventListener('click', e => { if (e.target === $('new-session-modal')) closeNewSessionModal(); });
+
+$('ns-start-btn').addEventListener('click', async () => {
+  const hostId  = $('ns-host').value;
+  const command = $('ns-command').value.trim();
+  const dir     = $('ns-dir').value.trim();
+  const name    = $('ns-name').value.trim();
+  const errEl   = $('ns-error');
+  errEl.textContent = '';
+
+  if (!hostId)  { errEl.textContent = 'Select a host.'; return; }
+  if (!command) { errEl.textContent = 'Command is required.'; return; }
+  if (!dir)     { errEl.textContent = 'Working directory is required.'; return; }
+
+  const btn = $('ns-start-btn');
+  btn.disabled = true; btn.textContent = 'Starting…';
+  try {
+    const sess = await api('POST', '/api/sessions', {
+      host_id: hostId, agent_type: 'custom',
+      working_dir: dir, name: name || command, command,
+    });
+    if (sess && sess.ID) {
+      state.sessions.unshift(sess);
+      renderSessions();
+      closeNewSessionModal();
+      // Auto-attach once running (give agent a moment to spawn)
+      setTimeout(() => openTerminal(sess.ID, sess.Name || command, 'starting', true), 600);
+    }
+  } catch (err) {
+    errEl.textContent = err.message || 'Failed to start session.';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Start session';
+  }
+});
+
+// ── Terminal event listeners ───────────────────────────────────────────────────
+
 $('term-close-btn').addEventListener('click', detachSession);
 $('term-modal').addEventListener('click', e => { if (e.target === $('term-modal')) detachSession(); });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && state.attachedSession) detachSession();
+  if (e.key === 'Escape' && $('term-modal').classList.contains('visible')) detachSession();
+  if (e.key === 'Escape' && $('new-session-modal').classList.contains('visible')) closeNewSessionModal();
 });
 
 $('term-input').addEventListener('keydown', e => {
