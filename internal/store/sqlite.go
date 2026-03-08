@@ -631,6 +631,13 @@ func (s *sqliteStore) StopSession(ctx context.Context, id string, exitCode int) 
 	return err
 }
 
+func (s *sqliteStore) DeleteSession(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE sessions SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`,
+		now(), id)
+	return err
+}
+
 func (s *sqliteStore) DeleteSessionsByHost(ctx context.Context, hostID string) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE sessions SET deleted_at = ? WHERE host_id = ? AND deleted_at IS NULL`,

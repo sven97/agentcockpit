@@ -229,6 +229,31 @@ func (s *Server) handleKillSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "killed"})
 }
 
+func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
+	user := currentUser(r)
+	id := r.PathValue("id")
+
+	sess, err := s.store.GetSession(r.Context(), id)
+	if err != nil || sess == nil || sess.UserID != user.ID {
+		writeError(w, http.StatusNotFound, "session not found")
+		return
+	}
+	// Kill the process if still running.
+	s.hub.SendToHost(sess.HostID, protocol.SessionKill{
+		Type:      protocol.TypeSessionKill,
+		SessionID: id,
+	})
+	if err := s.store.DeleteSession(r.Context(), id); err != nil {
+		writeError(w, http.StatusInternalServerError, "db error")
+		return
+	}
+	s.hub.BroadcastToUser(user.ID, map[string]any{
+		"type":      "session_deleted",
+		"sessionId": id,
+	})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
 func (s *Server) handleSessionEvents(w http.ResponseWriter, r *http.Request) {
 	user := currentUser(r)
 	id := r.PathValue("id")

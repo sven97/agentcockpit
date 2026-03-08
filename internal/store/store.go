@@ -42,6 +42,7 @@ type Store interface {
 	ListActiveSessionsByHost(ctx context.Context, hostID string) ([]*Session, error)
 	UpdateSessionStatus(ctx context.Context, id, status string) error
 	StopSession(ctx context.Context, id string, exitCode int) error
+	DeleteSession(ctx context.Context, id string) error
 	DeleteSessionsByHost(ctx context.Context, hostID string) error
 
 	// Session events (append-only)

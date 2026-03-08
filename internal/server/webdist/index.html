@@ -1490,6 +1490,11 @@ function handleWS(msg) {
       renderSessions();
       break;
     }
+    case 'session_deleted': {
+      state.sessions = state.sessions.filter(s => s.ID !== msg.sessionId);
+      renderSessions();
+      break;
+    }
     case 'host_deleted': {
       state.hosts = state.hosts.filter(h => h.ID !== msg.hostId);
       state.sessions = state.sessions.filter(s => s.HostID !== msg.hostId);
@@ -1694,6 +1699,7 @@ function renderSessions() {
            <button class="btn-session-action danger" onclick="killSession('${esc(s.ID)}')">kill</button>`
         : `<button class="btn-session-action" onclick="openTerminal('${esc(s.ID)}','${esc(name)}','${esc(s.Status)}',false)">replay</button>`
       }
+      <button class="btn-session-action danger" onclick="deleteSession('${esc(s.ID)}')">delete</button>
     </div>`;
 
     const tok = state.sessionTokens[s.ID];
@@ -1718,6 +1724,13 @@ async function killSession(id) {
   await api('DELETE', `/api/sessions/${id}`);
   const s = state.sessions.find(s => s.ID === id);
   if (s) { s.Status = 'stopped'; renderSessions(); }
+}
+
+async function deleteSession(id) {
+  if (!confirm('Delete this session? This cannot be undone.')) return;
+  await api('DELETE', `/api/sessions/${id}/delete`);
+  state.sessions = state.sessions.filter(s => s.ID !== id);
+  renderSessions();
 }
 
 // ── Utilities ──────────────────────────────────────────────────────────────────

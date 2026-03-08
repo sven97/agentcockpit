@@ -114,6 +114,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/sessions", s.requireAuth(s.handleCreateSession))
 	s.mux.HandleFunc("GET /api/sessions/{id}", s.requireAuth(s.handleGetSession))
 	s.mux.HandleFunc("DELETE /api/sessions/{id}", s.requireAuth(s.handleKillSession))
+	s.mux.HandleFunc("DELETE /api/sessions/{id}/delete", s.requireAuth(s.handleDeleteSession))
 	s.mux.HandleFunc("GET /api/sessions/{id}/events", s.requireAuth(s.handleSessionEvents))
 
 	// ── Approvals API ──────────────────────────────────────────────────────
