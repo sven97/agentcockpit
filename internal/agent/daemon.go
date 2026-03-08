@@ -181,6 +181,10 @@ func (d *Daemon) wsWriter(ctx context.Context, conn *websocket.Conn, errc chan<-
 
 // wsReader reads messages from the relay WebSocket and dispatches them.
 func (d *Daemon) wsReader(ctx context.Context, conn *websocket.Conn, errc chan<- error) {
+	// Set an initial read deadline so we detect dead connections even when no
+	// data flows (e.g. Cloudflare holding a TCP connection open after Cloud Run
+	// restarts). Reset on pong (from our own pings) and on any received message.
+	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	conn.SetPongHandler(func(string) error {
 		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		return nil
@@ -191,6 +195,7 @@ func (d *Daemon) wsReader(ctx context.Context, conn *websocket.Conn, errc chan<-
 			errc <- err
 			return
 		}
+		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		d.handleRelayMessage(data)
 	}
 }

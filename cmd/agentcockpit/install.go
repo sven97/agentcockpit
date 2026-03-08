@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -187,12 +188,16 @@ func serviceRunning() (bool, string) {
 		if err != nil {
 			return false, ""
 		}
-		// launchctl list returns JSON with PID field when running
+		// macOS < 15: launchctl list returns JSON with a "PID" key.
 		var info struct {
 			PID int `json:"PID"`
 		}
 		if err := json.Unmarshal(out, &info); err == nil && info.PID > 0 {
 			return true, fmt.Sprintf("%d", info.PID)
+		}
+		// macOS 15+: launchctl list returns plist-style output, e.g. "PID" = 1234;
+		if m := regexp.MustCompile(`"PID"\s*=\s*(\d+)`).FindSubmatch(out); m != nil {
+			return true, string(m[1])
 		}
 		return false, ""
 	case "linux":
