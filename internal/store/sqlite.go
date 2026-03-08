@@ -56,6 +56,8 @@ func (s *sqliteStore) migrate() error {
 // Each is retried idempotently — duplicate-column errors are swallowed.
 var migrations = []string{
 	`ALTER TABLE users ADD COLUMN e2e_public_key TEXT`,
+	`ALTER TABLE users ADD COLUMN e2e_encrypted_privkey TEXT`,
+	`ALTER TABLE users ADD COLUMN e2e_pbkdf2_salt TEXT`,
 	`ALTER TABLE sessions ADD COLUMN agent_ephemeral_pubkey TEXT`,
 	`ALTER TABLE approval_requests ADD COLUMN payload_ciphertext TEXT`,
 }
@@ -229,27 +231,27 @@ func (s *sqliteStore) CreateUser(ctx context.Context, u *User) error {
 
 func (s *sqliteStore) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	return s.scanUser(s.db.QueryRowContext(ctx,
-		`SELECT id, email, name, password_hash, github_id, role, e2e_public_key, created_at, updated_at, deleted_at
+		`SELECT id, email, name, password_hash, github_id, role, e2e_public_key, e2e_encrypted_privkey, e2e_pbkdf2_salt, created_at, updated_at, deleted_at
 		 FROM users WHERE email = ? AND deleted_at IS NULL`, email))
 }
 
 func (s *sqliteStore) GetUserByID(ctx context.Context, id string) (*User, error) {
 	return s.scanUser(s.db.QueryRowContext(ctx,
-		`SELECT id, email, name, password_hash, github_id, role, e2e_public_key, created_at, updated_at, deleted_at
+		`SELECT id, email, name, password_hash, github_id, role, e2e_public_key, e2e_encrypted_privkey, e2e_pbkdf2_salt, created_at, updated_at, deleted_at
 		 FROM users WHERE id = ? AND deleted_at IS NULL`, id))
 }
 
 func (s *sqliteStore) GetUserByGitHubID(ctx context.Context, githubID string) (*User, error) {
 	return s.scanUser(s.db.QueryRowContext(ctx,
-		`SELECT id, email, name, password_hash, github_id, role, e2e_public_key, created_at, updated_at, deleted_at
+		`SELECT id, email, name, password_hash, github_id, role, e2e_public_key, e2e_encrypted_privkey, e2e_pbkdf2_salt, created_at, updated_at, deleted_at
 		 FROM users WHERE github_id = ? AND deleted_at IS NULL`, githubID))
 }
 
 func (s *sqliteStore) scanUser(row *sql.Row) (*User, error) {
 	var u User
-	var passwordHash, githubID, e2ePubKey, createdAt, updatedAt, deletedAt sql.NullString
+	var passwordHash, githubID, e2ePubKey, e2eEncPrivKey, e2eSalt, createdAt, updatedAt, deletedAt sql.NullString
 	err := row.Scan(&u.ID, &u.Email, &u.Name, &passwordHash, &githubID,
-		&u.Role, &e2ePubKey, &createdAt, &updatedAt, &deletedAt)
+		&u.Role, &e2ePubKey, &e2eEncPrivKey, &e2eSalt, &createdAt, &updatedAt, &deletedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -259,6 +261,8 @@ func (s *sqliteStore) scanUser(row *sql.Row) (*User, error) {
 	u.PasswordHash = passwordHash.String
 	u.GitHubID = githubID.String
 	u.E2EPublicKey = e2ePubKey.String
+	u.E2EEncryptedPrivKey = e2eEncPrivKey.String
+	u.E2EPbkdf2Salt = e2eSalt.String
 	if t := parseTime(createdAt); t != nil {
 		u.CreatedAt = *t
 	}
@@ -269,10 +273,10 @@ func (s *sqliteStore) scanUser(row *sql.Row) (*User, error) {
 	return &u, nil
 }
 
-func (s *sqliteStore) UpdateUserE2EPublicKey(ctx context.Context, userID, spkiBase64url string) error {
+func (s *sqliteStore) UpdateUserE2EKeys(ctx context.Context, userID, spkiBase64url, encryptedPrivKey, pbkdf2Salt string) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE users SET e2e_public_key = ?, updated_at = ? WHERE id = ?`,
-		spkiBase64url, now(), userID)
+		`UPDATE users SET e2e_public_key = ?, e2e_encrypted_privkey = ?, e2e_pbkdf2_salt = ?, updated_at = ? WHERE id = ?`,
+		spkiBase64url, nullStr(encryptedPrivKey), nullStr(pbkdf2Salt), now(), userID)
 	return err
 }
 

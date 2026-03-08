@@ -12,7 +12,7 @@ type Store interface {
 	GetUserByEmail(ctx context.Context, email string) (*User, error)
 	GetUserByID(ctx context.Context, id string) (*User, error)
 	GetUserByGitHubID(ctx context.Context, githubID string) (*User, error)
-	UpdateUserE2EPublicKey(ctx context.Context, userID, spkiBase64url string) error
+	UpdateUserE2EKeys(ctx context.Context, userID, spkiBase64url, encryptedPrivKey, pbkdf2Salt string) error
 
 	// Auth tokens (browser sessions)
 	CreateAuthToken(ctx context.Context, t *AuthToken) error

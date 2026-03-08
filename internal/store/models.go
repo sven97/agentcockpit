@@ -9,7 +9,9 @@ type User struct {
 	PasswordHash   string // bcrypt; empty if OAuth-only
 	GitHubID       string
 	Role           string // "user" | "admin"
-	E2EPublicKey   string // SPKI base64url of user's ECDH P-256 long-term public key; empty if not yet set
+	E2EPublicKey        string // SPKI base64url of user's ECDH P-256 long-term public key; empty if not yet set
+	E2EEncryptedPrivKey string // PKCS#8 private key encrypted with PBKDF2+AES-256-GCM wrapping key; base64
+	E2EPbkdf2Salt       string // base64 random 16-byte salt for PBKDF2 wrapping key derivation
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 	DeletedAt      *time.Time
