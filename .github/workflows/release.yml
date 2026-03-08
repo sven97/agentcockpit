@@ -1,8 +1,16 @@
 name: Release
 
+# Triggered either by pushing a tag (git tag v1.2.3 && git push origin v1.2.3)
+# or manually from the GitHub Actions UI with an explicit version string.
 on:
   push:
-    branches: [main]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g. v1.2.3)'
+        required: true
 
 jobs:
   release:
@@ -14,21 +22,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Bump patch version and tag
-        id: tag
+      # When triggered manually, create the tag so goreleaser can find it.
+      - name: Create tag (manual trigger only)
+        if: github.event_name == 'workflow_dispatch'
         run: |
-          latest=$(git tag --sort=-v:refname | grep '^v' | head -1)
-          if [ -z "$latest" ]; then
-            next="v0.1.0"
-          else
-            IFS='.' read -r major minor patch <<< "${latest#v}"
-            next="v${major}.${minor}.$((patch + 1))"
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "$next"
-          git push origin "$next"
-          echo "tag=$next" >> "$GITHUB_OUTPUT"
+          git tag "${{ github.event.inputs.version }}"
+          git push origin "${{ github.event.inputs.version }}"
 
       - uses: actions/setup-go@v5
         with:
