@@ -48,10 +48,31 @@ func shellPath() string {
 	return "sh" // last resort — rely on PATH
 }
 
+// expandHome replaces a leading ~ with the user's home directory.
+func expandHome(path string) string {
+	if path == "~" {
+		if h, err := os.UserHomeDir(); err == nil {
+			return h
+		}
+	} else if len(path) > 1 && path[:2] == "~/" {
+		if h, err := os.UserHomeDir(); err == nil {
+			return h + path[1:]
+		}
+	}
+	return path
+}
+
 // start spawns a new PTY session and streams its output to the relay.
 func (p *sessionPool) start(msg protocol.SessionCreate, sendFn func(any)) {
-	cmd := exec.Command(shellPath(), "-c", msg.Command)
-	cmd.Dir = msg.CWD
+	shell := shellPath()
+	var cmd *exec.Cmd
+	if msg.Command == "" || msg.Command == "shell" {
+		// Run an interactive login shell directly (no -c wrapper).
+		cmd = exec.Command(shell, "-l")
+	} else {
+		cmd = exec.Command(shell, "-c", msg.Command)
+	}
+	cmd.Dir = expandHome(msg.CWD)
 	cmd.Env = append(os.Environ(),
 		"TERM=xterm-256color",
 		"AGENTCOCKPIT_SESSION_ID="+msg.SessionID,

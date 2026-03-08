@@ -1138,7 +1138,7 @@ header {
 <div class="modal-backdrop" id="new-session-modal">
   <div class="modal">
     <div class="modal-header">
-      <span class="modal-title">New session</span>
+      <span class="modal-title">New shell session</span>
       <button class="modal-close" id="ns-close-btn">&#x2715;</button>
     </div>
     <div class="modal-body">
@@ -1146,20 +1146,8 @@ header {
         <div class="modal-step-label">Host</div>
         <select class="field-select" id="ns-host"></select>
       </div>
-      <div class="modal-step">
-        <div class="modal-step-label">Command</div>
-        <input type="text" class="modal-code-input" id="ns-command" placeholder="claude" style="letter-spacing:.05em;font-size:13px;text-align:left;text-transform:none">
-      </div>
-      <div class="modal-step">
-        <div class="modal-step-label">Working directory</div>
-        <input type="text" class="modal-code-input" id="ns-dir" placeholder="~/Developer/myproject" style="letter-spacing:.03em;font-size:13px;text-align:left;text-transform:none">
-      </div>
-      <div class="modal-step">
-        <div class="modal-step-label"><strong style="color:var(--text)">Name</strong> <span style="color:var(--dimmer);font-weight:400">(optional)</span></div>
-        <input type="text" class="modal-code-input" id="ns-name" placeholder="my session" style="letter-spacing:.03em;font-size:13px;text-align:left;text-transform:none">
-      </div>
       <div class="modal-error" id="ns-error"></div>
-      <button class="btn-primary" id="ns-start-btn">Start session</button>
+      <button class="btn-primary" id="ns-start-btn">Start shell</button>
     </div>
   </div>
 </div>
@@ -2102,11 +2090,7 @@ function openNewSessionModal() {
     ? onlineHosts.map(h => `<option value="${esc(h.ID)}">${esc(h.Name || h.Hostname || h.ID.slice(0,8))}</option>`).join('')
     : '<option value="">No hosts online</option>';
   $('ns-error').textContent = '';
-  $('ns-command').value = '';
-  $('ns-dir').value = '';
-  $('ns-name').value = '';
   $('new-session-modal').classList.add('visible');
-  $('ns-command').focus();
 }
 
 function closeNewSessionModal() {
@@ -2118,35 +2102,26 @@ $('ns-close-btn').addEventListener('click', closeNewSessionModal);
 $('new-session-modal').addEventListener('click', e => { if (e.target === $('new-session-modal')) closeNewSessionModal(); });
 
 $('ns-start-btn').addEventListener('click', async () => {
-  const hostId  = $('ns-host').value;
-  const command = $('ns-command').value.trim();
-  const dir     = $('ns-dir').value.trim();
-  const name    = $('ns-name').value.trim();
-  const errEl   = $('ns-error');
+  const hostId = $('ns-host').value;
+  const errEl  = $('ns-error');
   errEl.textContent = '';
 
-  if (!hostId)  { errEl.textContent = 'Select a host.'; return; }
-  if (!command) { errEl.textContent = 'Command is required.'; return; }
-  if (!dir)     { errEl.textContent = 'Working directory is required.'; return; }
+  if (!hostId) { errEl.textContent = 'Select a host.'; return; }
 
   const btn = $('ns-start-btn');
   btn.disabled = true; btn.textContent = 'Starting…';
   try {
-    const sess = await api('POST', '/api/sessions', {
-      host_id: hostId, agent_type: 'custom',
-      working_dir: dir, name: name || command, command,
-    });
+    const sess = await api('POST', '/api/sessions', { host_id: hostId });
     if (sess && sess.ID) {
       state.sessions.unshift(sess);
       renderSessions();
       closeNewSessionModal();
-      // Auto-attach once running (give agent a moment to spawn)
-      setTimeout(() => openTerminal(sess.ID, sess.Name || command, 'starting', true), 600);
+      setTimeout(() => openTerminal(sess.ID, sess.Name || 'shell', 'starting', true), 600);
     }
   } catch (err) {
     errEl.textContent = err.message || 'Failed to start session.';
   } finally {
-    btn.disabled = false; btn.textContent = 'Start session';
+    btn.disabled = false; btn.textContent = 'Start shell';
   }
 });
 

@@ -166,9 +166,15 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if body.HostID == "" || body.AgentType == "" || body.WorkingDir == "" {
-		writeError(w, http.StatusBadRequest, "host_id, agent_type, working_dir required")
+	if body.HostID == "" {
+		writeError(w, http.StatusBadRequest, "host_id required")
 		return
+	}
+	if body.AgentType == "" {
+		body.AgentType = "custom"
+	}
+	if body.WorkingDir == "" {
+		body.WorkingDir = "~"
 	}
 
 	host, err := s.store.GetHostByID(r.Context(), body.HostID)
@@ -182,8 +188,7 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		command = defaultCommand(body.AgentType)
 	}
 	if command == "" {
-		writeError(w, http.StatusBadRequest, "command required for custom agent type")
-		return
+		command = "shell"
 	}
 
 	sess := &store.Session{
