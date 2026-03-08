@@ -3,6 +3,7 @@ name: Deploy
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 # ── Required GitHub repo secrets ───────────────────────────────────────────────
 #   GCP_PROJECT                    GCP project ID (e.g. agentcockpit-app)
