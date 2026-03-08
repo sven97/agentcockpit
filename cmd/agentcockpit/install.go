@@ -76,8 +76,10 @@ func runInstall(_ *cobra.Command, _ []string) error {
 	fmt.Println(" done")
 	fmt.Println()
 	fmt.Println("  The AgentCockpit daemon is running and will start automatically on login.")
+	fmt.Println()
 	fmt.Printf("  Check status:  agentcockpit status\n")
-	fmt.Printf("  Remove:        agentcockpit uninstall\n\n")
+	fmt.Printf("  View logs:     tail -f /tmp/agentcockpit.log\n")
+	fmt.Printf("  Uninstall:     agentcockpit uninstall\n\n")
 	return nil
 }
 
