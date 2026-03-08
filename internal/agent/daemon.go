@@ -135,7 +135,18 @@ func (d *Daemon) connect(ctx context.Context) (connected bool, err error) {
 	if err := conn.WriteJSON(hello); err != nil {
 		return true, err
 	}
-	log.Printf("connected to relay %s as %q", d.cfg.RelayURL, d.cfg.Name)
+
+	// Report active sessions so the server can restore their status after a
+	// restart (which would have marked them as "error" via MarkStaleSessionsAsError).
+	sessIDs := d.sessions.activeIDs()
+	if err := conn.WriteJSON(protocol.SessionList{
+		Type:     protocol.TypeSessionList,
+		Sessions: sessIDs,
+	}); err != nil {
+		return true, err
+	}
+
+	log.Printf("connected to relay %s as %q (%d active sessions)", d.cfg.RelayURL, d.cfg.Name, len(sessIDs))
 
 	errc := make(chan error, 2)
 	go d.wsReader(ctx, conn, errc)

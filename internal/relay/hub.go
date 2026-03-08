@@ -314,6 +314,27 @@ func (h *Hub) routeHostMessage(hc *HostConn, data []byte) {
 	}
 
 	switch envelope.Type {
+	case protocol.TypeSessionList:
+		var msg protocol.SessionList
+		if err := json.Unmarshal(data, &msg); err != nil {
+			return
+		}
+		// Restore sessions that are still running on the agent after a server
+		// restart. MarkStaleSessionsAsError would have set them to "error"; we
+		// flip them back to "running" and notify the browser so the UI updates.
+		for _, sessionID := range msg.Sessions {
+			sess, err := h.store.GetSession(context.Background(), sessionID)
+			if err != nil || sess == nil || sess.HostID != hc.ID {
+				continue
+			}
+			h.store.UpdateSessionStatus(context.Background(), sessionID, "running")
+			h.broadcastToUserBrowsersByUserID(hc.UserID, mustJSON(map[string]any{
+				"type":      "session_started",
+				"sessionId": sessionID,
+				"status":    "running",
+			}))
+		}
+
 	case protocol.TypeApprovalRequest:
 		var msg protocol.ApprovalRequest
 		if err := json.Unmarshal(data, &msg); err != nil {

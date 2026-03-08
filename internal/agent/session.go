@@ -204,6 +204,17 @@ func (s *session) streamOutput() {
 // rawFrame is a sentinel type so sendFn can detect binary vs JSON payloads.
 type rawFrame []byte
 
+// activeIDs returns the IDs of all currently running sessions.
+func (p *sessionPool) activeIDs() []string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	ids := make([]string, 0, len(p.sessions))
+	for id := range p.sessions {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // kill sends SIGKILL to a session's process.
 func (p *sessionPool) kill(sessionID string) {
 	p.mu.RLock()
