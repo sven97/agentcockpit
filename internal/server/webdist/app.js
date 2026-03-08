@@ -845,13 +845,18 @@ async function openTerminal(sessionId, name, status, live) {
   // causes charWidth/charHeight to be 0, making fitAddon.fit() a no-op.
   requestAnimationFrame(() => {
     term.open(container);
-    fitAddon.fit();
     if (live) term.focus();
     // ResizeObserver keeps the terminal fitted on subsequent window resizes.
     if (state.termResizeObserver) state.termResizeObserver.disconnect();
-    const ro = new ResizeObserver(() => fitAddon.fit());
+    const ro = new ResizeObserver(() => { if (state.fitAddon) state.fitAddon.fit(); });
     ro.observe(container);
     state.termResizeObserver = ro;
+    // xterm doesn't measure charWidth/charHeight until its first render.
+    // Wait for the first render event before calling fit so dimensions are valid.
+    const disposable = term.onRender(() => {
+      disposable.dispose();
+      if (state.fitAddon) state.fitAddon.fit();
+    });
   });
 
   // Replay stored scrollback (decrypt if E2E is active)
