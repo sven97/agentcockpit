@@ -1,8 +1,10 @@
 name: Deploy
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+    branches: [main]
 
 # Required GitHub repo secrets:
 #   GCP_PROJECT                    = agentcockpit-app
@@ -19,6 +21,7 @@ concurrency:
 jobs:
   build-and-push:
     name: Build & push image
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
