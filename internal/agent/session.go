@@ -181,6 +181,16 @@ func (p *sessionPool) writeStdin(sessionID string, data []byte) {
 	}
 }
 
+// resize updates the PTY window size for a session.
+func (p *sessionPool) resize(sessionID string, cols, rows uint16) {
+	p.mu.RLock()
+	sess, ok := p.sessions[sessionID]
+	p.mu.RUnlock()
+	if ok {
+		pty.Setsize(sess.ptmx, &pty.Winsize{Cols: cols, Rows: rows})
+	}
+}
+
 // nextSeq returns a monotonically increasing sequence number for a session.
 func (s *session) nextSeq() uint64 {
 	s.seqMu.Lock()

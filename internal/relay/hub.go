@@ -333,7 +333,16 @@ func (h *Hub) routeBrowserMessage(bc *BrowserConn, data []byte) {
 		if err := json.Unmarshal(data, &msg); err != nil {
 			return
 		}
-		// Look up session to verify ownership and find the host.
+		sess, err := h.store.GetSession(context.Background(), msg.SessionID)
+		if err != nil || sess == nil || sess.UserID != bc.UserID {
+			return
+		}
+		h.SendToHost(sess.HostID, &msg)
+	case protocol.TypeSessionResize:
+		var msg protocol.SessionResize
+		if err := json.Unmarshal(data, &msg); err != nil {
+			return
+		}
 		sess, err := h.store.GetSession(context.Background(), msg.SessionID)
 		if err != nil || sess == nil || sess.UserID != bc.UserID {
 			return

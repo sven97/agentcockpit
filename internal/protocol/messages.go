@@ -16,6 +16,7 @@ const (
 	TypeSessionCreate    = "session_create"
 	TypeSessionKill      = "session_kill"
 	TypeStdinData        = "stdin_data"
+	TypeSessionResize    = "session_resize"
 	TypeServerShutdown   = "server_shutdown"
 	TypeHostRemoved      = "host_removed" // host was deleted; agent should stop and remove config
 
@@ -86,6 +87,13 @@ type StdinData struct {
 	Type      string `json:"type"`
 	SessionID string `json:"sessionId"`
 	Data      []byte `json:"data"`
+}
+
+type SessionResize struct {
+	Type      string `json:"type"`
+	SessionID string `json:"sessionId"`
+	Cols      uint16 `json:"cols"`
+	Rows      uint16 `json:"rows"`
 }
 
 type ServerShutdown struct {

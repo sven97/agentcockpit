@@ -946,13 +946,15 @@ header {
 #term-modal { z-index: 1100; }
 
 .term-container {
-  width: 90vw;
-  max-width: 1100px;
-  height: 82vh;
+  width: 92vw;
+  max-width: 1200px;
+  height: 85vh;
   display: flex;
   flex-direction: column;
-  background: #080808;
+  background: #0d0d0d;
   border: 1px solid var(--border2);
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .term-header {
@@ -976,50 +978,20 @@ header {
   white-space: nowrap;
 }
 
-.term-output {
+#xterm-container {
   flex: 1;
-  overflow-y: auto;
-  padding: 10px 14px;
-  font-family: var(--font);
-  font-size: 12px;
-  line-height: 1.5;
-  color: #d0d0d0;
-  background: #080808;
-  white-space: pre-wrap;
-  word-break: break-all;
+  overflow: hidden;
+  padding: 6px 8px;
+  background: #0d0d0d;
 }
 
-[data-theme="light"] .term-output { background: #f5f5f5; color: #222; }
-
-.term-input-row {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  border-top: 1px solid var(--border);
-  background: var(--surface);
-}
-
-.term-prompt-sym {
-  padding: 0 10px 0 14px;
-  color: var(--green);
-  font-size: 14px;
-  flex-shrink: 0;
-  user-select: none;
-}
-
-.term-input {
-  flex: 1;
-  background: none;
-  border: none;
-  color: var(--text);
-  font-family: var(--font);
-  font-size: 12px;
-  padding: 10px 14px 10px 0;
-  outline: none;
-}
-
-.term-input::placeholder { color: var(--dimmer); font-size: 11px; }
+/* xterm.js internal overrides */
+.xterm { height: 100%; }
+.xterm-viewport { border-radius: 0; }
 </style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
 </head>
 <body>
 
@@ -1160,11 +1132,7 @@ header {
       <span class="status-badge running" id="term-status" style="flex-shrink:0"></span>
       <button class="modal-close" id="term-close-btn">&#x2715;</button>
     </div>
-    <pre class="term-output" id="term-output"></pre>
-    <div class="term-input-row">
-      <span class="term-prompt-sym">›</span>
-      <input class="term-input" id="term-input" placeholder="type to send input — Enter to send, Ctrl+C to interrupt" autocomplete="off" spellcheck="false">
-    </div>
+    <div id="xterm-container"></div>
   </div>
 </div>
 
@@ -1406,7 +1374,7 @@ function connectWS() {
       if (buf.length < 33 || buf[0] !== 0x01) return;
       const sessionId = String.fromCharCode(...buf.slice(1, 33));
       if (state.attachedSession && sessionId === state.attachedSession) {
-        termWrite(new TextDecoder().decode(buf.slice(33)));
+        termWrite(buf.slice(33));
       }
       return;
     }
@@ -1458,14 +1426,13 @@ function handleWS(msg) {
     case 'session_stopped': {
       const s = state.sessions.find(s => s.ID === msg.sessionId);
       if (s) { s.Status = 'stopped'; renderSessions(); }
-      // Update terminal badge and disable input if attached
+      // Update terminal badge if attached
       if (state.attachedSession === msg.sessionId || $('term-modal').classList.contains('visible')) {
         const sb = $('term-status');
         if (sb.textContent !== 'stopped') {
           sb.textContent = 'stopped'; sb.className = 'status-badge stopped';
-          $('term-input').disabled = true;
-          $('term-input').placeholder = 'session ended';
           state.attachedSession = null;
+          if (state.xterm) state.xterm.options.disableStdin = true;
         }
       }
       break;
@@ -1821,264 +1788,80 @@ function toast(msg) {
   setTimeout(() => el.remove(), 3200);
 }
 
-// ── Terminal / ANSI renderer ───────────────────────────────────────────────────
-
-// Standard ANSI 16 colors (indices 0–15).
-const ANSI16 = [
-  '#1a1a1a','#cc0000','#4e9a06','#c4a000','#3465a4','#75507b','#06989a','#d3d7cf',
-  '#555753','#ef2929','#8ae234','#fce94f','#729fcf','#ad7fa8','#34e2e2','#eeeeec',
-];
-
-// 256-color palette (first 16 = ANSI16, 16–231 = 6×6×6 cube, 232–255 = grayscale).
-function ansiColor256(n) {
-  if (n < 16) return ANSI16[n];
-  if (n < 232) {
-    n -= 16;
-    const b = n % 6, g = Math.floor(n / 6) % 6, r = Math.floor(n / 36);
-    const v = x => x ? x * 40 + 55 : 0;
-    return `rgb(${v(r)},${v(g)},${v(b)})`;
-  }
-  const g = (n - 232) * 10 + 8;
-  return `rgb(${g},${g},${g})`;
-}
-
-class AnsiRenderer {
-  constructor() {
-    this.lines = [[]]; // array of line arrays; each line = array of cells {ch,fg,bg,b,d,i,u}
-    this.cx = 0; this.cy = 0;
-    this.fg = null; this.bg = null;
-    this.bold = false; this.dim = false; this.italic = false; this.underline = false;
-    this._sx = 0; this._sy = 0; // saved cursor
-  }
-
-  _ensure(y) { while (this.lines.length <= y) this.lines.push([]); }
-
-  _cell() { return { ch: ' ', fg: this.fg, bg: this.bg, b: this.bold, d: this.dim, i: this.italic, u: this.underline }; }
-
-  _put(ch) {
-    this._ensure(this.cy);
-    const line = this.lines[this.cy];
-    const cell = { ch, fg: this.fg, bg: this.bg, b: this.bold, d: this.dim, i: this.italic, u: this.underline };
-    if (this.cx < line.length) line[this.cx] = cell;
-    else { while (line.length < this.cx) line.push({ ch: ' ', fg: null, bg: null, b: false, d: false, i: false, u: false }); line.push(cell); }
-    this.cx++;
-  }
-
-  _sgr(params) {
-    if (!params.length) params = [0];
-    let i = 0;
-    while (i < params.length) {
-      const n = params[i];
-      if (n === 0)  { this.fg = null; this.bg = null; this.bold = false; this.dim = false; this.italic = false; this.underline = false; }
-      else if (n === 1) this.bold = true;
-      else if (n === 2) this.dim = true;
-      else if (n === 3) this.italic = true;
-      else if (n === 4) this.underline = true;
-      else if (n === 22) { this.bold = false; this.dim = false; }
-      else if (n === 23) this.italic = false;
-      else if (n === 24) this.underline = false;
-      else if (n >= 30 && n <= 37) this.fg = n - 30;
-      else if (n === 38 && params[i+1] === 5) { this.fg = ansiColor256(params[i+2] || 0); i += 2; }
-      else if (n === 38 && params[i+1] === 2) { this.fg = `rgb(${params[i+2]||0},${params[i+3]||0},${params[i+4]||0})`; i += 4; }
-      else if (n === 39) this.fg = null;
-      else if (n >= 40 && n <= 47) this.bg = n - 40;
-      else if (n === 48 && params[i+1] === 5) { this.bg = ansiColor256(params[i+2] || 0); i += 2; }
-      else if (n === 48 && params[i+1] === 2) { this.bg = `rgb(${params[i+2]||0},${params[i+3]||0},${params[i+4]||0})`; i += 4; }
-      else if (n === 49) this.bg = null;
-      else if (n >= 90 && n <= 97)  this.fg = n - 90 + 8;
-      else if (n >= 100 && n <= 107) this.bg = n - 100 + 8;
-      i++;
-    }
-  }
-
-  write(text) {
-    let i = 0;
-    while (i < text.length) {
-      const ch = text[i];
-      if (ch === '\x1b') {
-        const next = text[i+1];
-        if (next === '[') {
-          i += 2;
-          let param = '';
-          while (i < text.length && text[i] >= '\x30' && text[i] <= '\x3f') param += text[i++];
-          while (i < text.length && text[i] >= '\x20' && text[i] <= '\x2f') i++; // intermediates
-          const cmd = text[i] || ''; i++;
-          const nums = param.split(';').map(s => s === '' ? 0 : +s);
-          switch (cmd) {
-            case 'm': this._sgr(nums); break;
-            case 'H': case 'f':
-              this.cy = Math.max(0, (nums[0] || 1) - 1);
-              this.cx = Math.max(0, (nums[1] || 1) - 1);
-              this._ensure(this.cy); break;
-            case 'A': this.cy = Math.max(0, this.cy - (nums[0] || 1)); break;
-            case 'B': this.cy += nums[0] || 1; this._ensure(this.cy); break;
-            case 'C': this.cx += nums[0] || 1; break;
-            case 'D': this.cx = Math.max(0, this.cx - (nums[0] || 1)); break;
-            case 'E': this.cy += nums[0] || 1; this.cx = 0; this._ensure(this.cy); break;
-            case 'F': this.cy = Math.max(0, this.cy - (nums[0] || 1)); this.cx = 0; break;
-            case 'G': this.cx = Math.max(0, (nums[0] || 1) - 1); break;
-            case 'J':
-              if (nums[0] === 2 || nums[0] === 3) { this.lines = [[]]; this.cx = 0; this.cy = 0; }
-              else if (!nums[0]) { this._ensure(this.cy); this.lines[this.cy].splice(this.cx); this.lines.splice(this.cy + 1); }
-              break;
-            case 'K':
-              this._ensure(this.cy);
-              if (!nums[0])       this.lines[this.cy].splice(this.cx);
-              else if (nums[0] === 1) { for (let x = 0; x <= this.cx && x < this.lines[this.cy].length; x++) this.lines[this.cy][x] = { ch: ' ', fg: null, bg: null, b: false, d: false, i: false, u: false }; }
-              else if (nums[0] === 2) { this.lines[this.cy] = []; this.cx = 0; }
-              break;
-            case 'P': if (this.lines[this.cy]) this.lines[this.cy].splice(this.cx, nums[0] || 1); break;
-            case 's': this._sx = this.cx; this._sy = this.cy; break;
-            case 'u': this.cx = this._sx; this.cy = this._sy; break;
-            // ignore: h, l, r, S, T, X, @, and private sequences
-          }
-        } else if (next === ']') {
-          // OSC — skip to BEL or ST
-          i += 2;
-          while (i < text.length) {
-            if (text[i] === '\x07') { i++; break; }
-            if (text[i] === '\x1b' && text[i+1] === '\\') { i += 2; break; }
-            i++;
-          }
-        } else if (next === '(') {
-          i += 3; // charset designation
-        } else if (next === 'M') {
-          this.cy = Math.max(0, this.cy - 1); i += 2; // reverse index
-        } else {
-          i += 2;
-        }
-      } else if (ch === '\r') {
-        this.cx = 0; i++;
-      } else if (ch === '\n') {
-        this.cy++;
-        this._ensure(this.cy);
-        // Cap scrollback at 3000 lines
-        if (this.lines.length > 3000) {
-          const trim = 500;
-          this.lines.splice(0, trim);
-          this.cy = Math.max(0, this.cy - trim);
-        }
-        i++;
-      } else if (ch === '\b') {
-        if (this.cx > 0) this.cx--; i++;
-      } else if (ch === '\t') {
-        this.cx = (Math.floor(this.cx / 8) + 1) * 8; i++;
-      } else if (ch.charCodeAt(0) < 32) {
-        i++;
-      } else {
-        this._put(ch); i++;
-      }
-    }
-  }
-
-  render() {
-    let html = '';
-    for (let y = 0; y < this.lines.length; y++) {
-      const line = this.lines[y] || [];
-      if (!line.length) { html += '\n'; continue; }
-      let lineHtml = '';
-      let prevKey = null;
-      for (let x = 0; x < line.length; x++) {
-        const c = line[x];
-        const key = `${c.fg}|${c.bg}|${c.b}|${c.d}|${c.i}|${c.u}`;
-        if (key !== prevKey) {
-          if (prevKey !== null) lineHtml += '</span>';
-          const s = [];
-          const fg = c.fg !== null ? (typeof c.fg === 'number' ? ANSI16[c.fg] : c.fg) : null;
-          const bg = c.bg !== null ? (typeof c.bg === 'number' ? ANSI16[c.bg] : c.bg) : null;
-          if (fg) s.push(`color:${fg}`);
-          if (bg) s.push(`background:${bg}`);
-          if (c.b) s.push('font-weight:bold');
-          if (c.d) s.push('opacity:.55');
-          if (c.i) s.push('font-style:italic');
-          if (c.u) s.push('text-decoration:underline');
-          lineHtml += s.length ? `<span style="${s.join(';')}">` : '<span>';
-          prevKey = key;
-        }
-        const ch = c.ch;
-        lineHtml += ch === '&' ? '&amp;' : ch === '<' ? '&lt;' : ch === '>' ? '&gt;' : ch;
-      }
-      if (prevKey !== null) lineHtml += '</span>';
-      html += lineHtml + '\n';
-    }
-    return html;
-  }
-}
-
 // ── Terminal state & functions ─────────────────────────────────────────────────
 
-Object.assign(state, { attachedSession: null, termRenderer: null, termFlushId: null });
+Object.assign(state, { attachedSession: null, xterm: null, fitAddon: null });
 
-// openTerminal loads a session into the terminal overlay.
-// live=true: also attaches for stdin/live PTY output (running sessions).
-// live=false: replay-only from stored events (stopped sessions).
 async function openTerminal(sessionId, name, status, live) {
-  // Stop any previous session
-  if (state.termFlushId) { clearInterval(state.termFlushId); state.termFlushId = null; }
+  if (state.xterm) { state.xterm.dispose(); state.xterm = null; state.fitAddon = null; }
   state.attachedSession = live ? sessionId : null;
-  state.termRenderer = new AnsiRenderer();
 
   $('term-title').textContent = name || sessionId.slice(0, 12);
   const sb = $('term-status');
   sb.textContent = status;
   sb.className = `status-badge ${status}`;
 
-  const out = $('term-output');
-  out.innerHTML = '<span style="color:var(--dimmer);font-size:11px">Loading…</span>';
+  const term = new Terminal({
+    cursorBlink: true,
+    fontSize: 13,
+    fontFamily: '"SF Mono","Fira Code","Cascadia Code",Menlo,monospace',
+    theme: { background: '#0d0d0d', foreground: '#d4d4d4', cursor: '#00d67c' },
+    scrollback: 5000,
+    convertEol: false,
+    disableStdin: !live,
+  });
+  const fitAddon = new FitAddon.FitAddon();
+  term.loadAddon(fitAddon);
 
-  const inp = $('term-input');
-  inp.disabled = !live;
-  inp.placeholder = live
-    ? 'type to send input — Enter to send, Ctrl+C to interrupt'
-    : 'read-only replay';
+  const container = $('xterm-container');
+  container.innerHTML = '';
+  term.open(container);
+  fitAddon.fit();
+
+  state.xterm = term;
+  state.fitAddon = fitAddon;
+
+  if (live) {
+    // Keyboard input → PTY stdin
+    term.onData(data => {
+      if (!state.ws || state.wsState !== 'connected' || !state.attachedSession) return;
+      const bytes = new TextEncoder().encode(data);
+      const b64 = btoa(Array.from(bytes, b => String.fromCharCode(b)).join(''));
+      state.ws.send(JSON.stringify({ type: 'stdin_data', sessionId: state.attachedSession, data: b64 }));
+    });
+    // Notify agent of terminal dimensions on resize
+    term.onResize(({ cols, rows }) => {
+      if (!state.ws || state.wsState !== 'connected' || !state.attachedSession) return;
+      state.ws.send(JSON.stringify({ type: 'session_resize', sessionId: state.attachedSession, cols, rows }));
+    });
+  }
 
   $('term-modal').classList.add('visible');
 
-  // Replay stored events (scrollback for both live and replay)
+  // Replay stored scrollback
   try {
     const events = await api('GET', `/api/sessions/${sessionId}/events`);
-    if (events && state.termRenderer) {
+    if (events && state.xterm) {
       for (const ev of events) {
         if (ev.Type === 'output' && ev.Data) {
-          const bytes = Uint8Array.from(atob(ev.Data), c => c.charCodeAt(0));
-          state.termRenderer.write(new TextDecoder().decode(bytes));
+          state.xterm.write(Uint8Array.from(atob(ev.Data), c => c.charCodeAt(0)));
         }
       }
-      termFlush();
     }
   } catch {}
 
-  if (live) {
-    $('term-input').focus();
-    state.termFlushId = setInterval(termFlush, 80);
-  }
+  if (live) term.focus();
 }
 
 function detachSession() {
   state.attachedSession = null;
-  state.termRenderer = null;
-  if (state.termFlushId) { clearInterval(state.termFlushId); state.termFlushId = null; }
+  if (state.xterm) { state.xterm.dispose(); state.xterm = null; state.fitAddon = null; }
   $('term-modal').classList.remove('visible');
 }
 
-function termWrite(text) {
-  if (!state.termRenderer) return;
-  state.termRenderer.write(text);
-}
-
-function termFlush() {
-  if (!state.termRenderer) return;
-  const out = $('term-output');
-  const atBottom = out.scrollHeight - out.scrollTop <= out.clientHeight + 40;
-  out.innerHTML = state.termRenderer.render();
-  if (atBottom) out.scrollTop = out.scrollHeight;
-}
-
-function sendInput(text) {
-  if (!state.ws || state.wsState !== 'connected' || !state.attachedSession) return;
-  // Go's []byte JSON-encodes as base64
-  const encoded = btoa(unescape(encodeURIComponent(text)));
-  state.ws.send(JSON.stringify({ type: 'stdin_data', sessionId: state.attachedSession, data: encoded }));
+// Called by the WS handler when a binary PTY frame arrives.
+function termWrite(data) {
+  if (state.xterm) state.xterm.write(data);
 }
 
 // ── New Session Modal ──────────────────────────────────────────────────────────
@@ -2128,28 +1911,10 @@ $('ns-start-btn').addEventListener('click', async () => {
 // ── Terminal event listeners ───────────────────────────────────────────────────
 
 $('term-close-btn').addEventListener('click', detachSession);
-$('term-modal').addEventListener('click', e => { if (e.target === $('term-modal')) detachSession(); });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && $('term-modal').classList.contains('visible')) detachSession();
   if (e.key === 'Escape' && $('new-session-modal').classList.contains('visible')) closeNewSessionModal();
 });
-
-$('term-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    sendInput($('term-input').value + '\n');
-    $('term-input').value = '';
-  } else if (e.key === 'c' && e.ctrlKey) {
-    e.preventDefault();
-    sendInput('\x03');
-  } else if (e.key === 'd' && e.ctrlKey) {
-    e.preventDefault();
-    sendInput('\x04');
-  } else if (e.key === 'l' && e.ctrlKey) {
-    e.preventDefault();
-    sendInput('\x0c');
-  }
-});
+window.addEventListener('resize', () => { if (state.fitAddon) state.fitAddon.fit(); });
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 
