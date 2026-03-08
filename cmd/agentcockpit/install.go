@@ -38,18 +38,21 @@ func init() {
 func runInstall(_ *cobra.Command, _ []string) error {
 	relay := strings.TrimRight(installRelay, "/")
 
-	// Step 1: auth (skip if already configured)
+	// Step 1: auth.
+	// Always claim an invite token when one is given — it registers a new host
+	// even if agentcockpit was previously installed on this machine.
+	// Only skip auth when no invite is provided and a config already exists.
 	cfgPath, _ := agentConfigPath()
-	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
+	_, statErr := os.Stat(cfgPath)
+	if installInvite != "" {
 		fmt.Println()
-		if installInvite != "" {
-			if err := runConnectInvite(relay, installInvite); err != nil {
-				return err
-			}
-		} else {
-			if err := runConnectDevice(relay); err != nil {
-				return err
-			}
+		if err := runConnectInvite(relay, installInvite); err != nil {
+			return err
+		}
+	} else if os.IsNotExist(statErr) {
+		fmt.Println()
+		if err := runConnectDevice(relay); err != nil {
+			return err
 		}
 	} else {
 		fmt.Println("  Already authorized — skipping auth.")
