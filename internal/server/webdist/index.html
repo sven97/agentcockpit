@@ -968,9 +968,7 @@ header {
 }
 
 .term-title {
-  font-size: 11px;
-  letter-spacing: .14em;
-  text-transform: uppercase;
+  font-size: 13px;
   color: var(--green);
   flex: 1;
   overflow: hidden;
@@ -986,9 +984,13 @@ header {
 }
 
 /* xterm.js internal overrides */
-.xterm { height: 100%; }
-.xterm-viewport { border-radius: 0; }
+.xterm { height: 100% !important; }
+.xterm-screen { height: 100% !important; }
+.xterm-viewport { border-radius: 0; overflow-y: auto !important; }
 </style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
 <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
@@ -1804,7 +1806,7 @@ async function openTerminal(sessionId, name, status, live) {
   const term = new Terminal({
     cursorBlink: true,
     fontSize: 13,
-    fontFamily: '"SF Mono","Fira Code","Cascadia Code",Menlo,monospace',
+    fontFamily: '"MesloLGS NF","FiraCode Nerd Font Mono","JetBrainsMono Nerd Font Mono","Symbols Nerd Font Mono","Source Code Pro","SF Mono","Fira Code","Cascadia Code",Menlo,monospace',
     theme: { background: '#0d0d0d', foreground: '#d4d4d4', cursor: '#00d67c' },
     scrollback: 5000,
     convertEol: false,
@@ -1816,7 +1818,6 @@ async function openTerminal(sessionId, name, status, live) {
   const container = $('xterm-container');
   container.innerHTML = '';
   term.open(container);
-  fitAddon.fit();
 
   state.xterm = term;
   state.fitAddon = fitAddon;
@@ -1837,6 +1838,8 @@ async function openTerminal(sessionId, name, status, live) {
   }
 
   $('term-modal').classList.add('visible');
+  // Fit after the modal is visible and the browser has laid out the container
+  requestAnimationFrame(() => { fitAddon.fit(); if (live) term.focus(); });
 
   // Replay stored scrollback
   try {
@@ -1849,8 +1852,6 @@ async function openTerminal(sessionId, name, status, live) {
       }
     }
   } catch {}
-
-  if (live) term.focus();
 }
 
 function detachSession() {
