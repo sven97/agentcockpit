@@ -84,7 +84,7 @@ function showAuth() {
   $('app').classList.remove('visible');
 }
 
-function showApp() {
+function showApp(password, userData) {
   if (currentPath !== '/dashboard') {
     location.href = '/dashboard';
     return;
@@ -92,6 +92,7 @@ function showApp() {
   $('home').classList.remove('visible');
   $('auth').classList.remove('visible');
   $('app').classList.add('visible');
+  initE2E(password, userData); // boot E2E crypto — unwraps or generates keypair
   fetchAll();
   connectWS();
 }
@@ -136,8 +137,7 @@ async function openDashboardFromHome() {
     const res = await fetch('/api/me');
     if (res.ok) { showApp(); return; }
   } catch {}
-  showAuth();
-  setAuthMode('login');
+  location.href = '/login';
 }
 
 function logout() {
@@ -155,12 +155,13 @@ $('login-form').addEventListener('submit', async e => {
   btn.disabled = true;
   btn.textContent = 'Signing in...';
   try {
+    const password = $('password').value;
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: $('email').value.trim(),
-        password: $('password').value,
+        password,
       }),
     });
     const data = await res.json();
@@ -170,7 +171,7 @@ $('login-form').addEventListener('submit', async e => {
     }
     state.token = data.token;
     localStorage.setItem('ac_token', data.token);
-    showApp();
+    showApp(password, data.user);
   } catch (err) {
     errEl.textContent = 'Network error — is the server running?';
   } finally {
@@ -234,13 +235,14 @@ $('register-form').addEventListener('submit', async e => {
   btn.disabled = true;
   btn.textContent = 'Creating...';
   try {
+    const password = $('reg-password').value;
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: $('reg-name').value.trim(),
         email: $('reg-email').value.trim(),
-        password: $('reg-password').value,
+        password,
       }),
     });
     const data = await res.json();
@@ -250,7 +252,7 @@ $('register-form').addEventListener('submit', async e => {
     }
     state.token = data.token;
     localStorage.setItem('ac_token', data.token);
-    showApp();
+    showApp(password, data.user);
   } catch (err) {
     errEl.textContent = 'Network error — is the server running?';
   } finally {
@@ -328,12 +330,21 @@ function connectWS() {
 
   ws.onmessage = e => {
     if (e.data instanceof ArrayBuffer) {
-      // Binary PTY frame: [0x01][32-byte hex sessionId][PTY data]
+      // Binary PTY frame: [0x01][32-byte hex sessionId][payload]
+      // payload = [12-byte IV][ciphertext+tag] when E2E active, else raw PTY bytes.
       const buf = new Uint8Array(e.data);
       if (buf.length < 33 || buf[0] !== 0x01) return;
       const sessionId = String.fromCharCode(...buf.slice(1, 33));
       if (state.attachedSession && sessionId === state.attachedSession) {
-        termWrite(buf.slice(33));
+        const payload = buf.slice(33);
+        const key = SESSION_KEY_CACHE.get(sessionId);
+        if (key) {
+          decryptChunk(key, payload, sessionId).then(plain => {
+            if (plain) termWrite(plain);
+          });
+        } else {
+          termWrite(payload); // no key: pre-E2E session or key not yet derived
+        }
       }
       return;
     }
@@ -358,16 +369,27 @@ function handleWS(msg) {
     case 'approval_request': {
       // Avoid duplicates
       if (!state.approvals.find(a => a.ID === msg.requestId)) {
-        state.approvals.unshift({
-          ID: msg.requestId,
-          SessionID: msg.sessionId,
-          ToolName: msg.toolName,
-          ToolInput: typeof msg.toolInput === 'string' ? msg.toolInput : JSON.stringify(msg.toolInput, null, 2),
-          RiskLevel: msg.riskLevel,
-          Status: 'pending',
-        });
-        renderApprovals();
-        toast(`⚠ Approval needed: ${msg.toolName}`);
+        const addApproval = (toolName, toolInput, riskLevel) => {
+          if (state.approvals.find(a => a.ID === msg.requestId)) return; // guard re-entry
+          state.approvals.unshift({
+            ID: msg.requestId,
+            SessionID: msg.sessionId,
+            ToolName: toolName || '(encrypted)',
+            ToolInput: typeof toolInput === 'string' ? toolInput : JSON.stringify(toolInput, null, 2),
+            RiskLevel: riskLevel || '',
+            Status: 'pending',
+          });
+          renderApprovals();
+          toast(`⚠ Approval needed: ${toolName || '(encrypted)'}`);
+        };
+        if (msg.enc) {
+          // E2E mode: decrypt before rendering.
+          decryptApprovalPayload(msg.sessionId, msg.enc, msg.requestId).then(p => {
+            addApproval(p?.toolName, p?.toolInput, p?.riskLevel);
+          });
+        } else {
+          addApproval(msg.toolName, msg.toolInput, msg.riskLevel);
+        }
       }
       break;
     }
@@ -378,8 +400,15 @@ function handleWS(msg) {
     }
     case 'session_started': {
       const s = state.sessions.find(s => s.ID === msg.sessionId);
-      if (s) { s.Status = 'running'; renderSessions(); }
-      else fetchAll();
+      if (s) {
+        s.Status = 'running';
+        if (msg.agentEphemeralPubKey) s.AgentEphemeralPubKey = msg.agentEphemeralPubKey;
+        renderSessions();
+      } else fetchAll();
+      // Proactively derive session key so live PTY frames can be decrypted immediately.
+      if (msg.agentEphemeralPubKey) {
+        getSessionKey(msg.sessionId, msg.agentEphemeralPubKey);
+      }
       break;
     }
     case 'session_stopped': {
@@ -755,6 +784,13 @@ async function openTerminal(sessionId, name, status, live) {
   if (state.xterm) { state.xterm.dispose(); state.xterm = null; state.fitAddon = null; }
   state.attachedSession = live ? sessionId : null;
 
+  // Ensure the session key is derived before we start receiving/replaying data.
+  // Look up the ephemeral pubkey from the cached session list.
+  const sessObj = state.sessions.find(s => s.ID === sessionId);
+  if (sessObj?.AgentEphemeralPubKey) {
+    await getSessionKey(sessionId, sessObj.AgentEphemeralPubKey);
+  }
+
   $('term-title').textContent = name || sessionId.slice(0, 12);
   const sb = $('term-status');
   sb.textContent = status;
@@ -780,12 +816,15 @@ async function openTerminal(sessionId, name, status, live) {
   state.fitAddon = fitAddon;
 
   if (live) {
-    // Keyboard input → PTY stdin
-    term.onData(data => {
+    // Keyboard input → PTY stdin (encrypted when E2E session key is available)
+    term.onData(async data => {
       if (!state.ws || state.wsState !== 'connected' || !state.attachedSession) return;
+      const sid = state.attachedSession;
       const bytes = new TextEncoder().encode(data);
-      const b64 = btoa(Array.from(bytes, b => String.fromCharCode(b)).join(''));
-      state.ws.send(JSON.stringify({ type: 'stdin_data', sessionId: state.attachedSession, data: b64 }));
+      const key = SESSION_KEY_CACHE.get(sid);
+      const payload = key ? await encryptStdin(key, bytes, sid) : bytes;
+      const b64 = btoa(Array.from(payload, b => String.fromCharCode(b)).join(''));
+      state.ws.send(JSON.stringify({ type: 'stdin_data', sessionId: sid, data: b64 }));
     });
     // Notify agent of terminal dimensions on resize
     term.onResize(({ cols, rows }) => {
@@ -798,13 +837,20 @@ async function openTerminal(sessionId, name, status, live) {
   // Double rAF: first frame resolves display:flex layout, second measures stable dimensions
   requestAnimationFrame(() => requestAnimationFrame(() => { fitAddon.fit(); if (live) term.focus(); }));
 
-  // Replay stored scrollback
+  // Replay stored scrollback (decrypt if E2E is active)
   try {
     const events = await api('GET', `/api/sessions/${sessionId}/events`);
     if (events && state.xterm) {
+      const key = SESSION_KEY_CACHE.get(sessionId);
       for (const ev of events) {
         if (ev.Type === 'output' && ev.Data) {
-          state.xterm.write(Uint8Array.from(atob(ev.Data), c => c.charCodeAt(0)));
+          const raw = Uint8Array.from(atob(ev.Data), c => c.charCodeAt(0));
+          if (key) {
+            const plain = await decryptChunk(key, raw, sessionId);
+            if (plain && state.xterm) state.xterm.write(plain);
+          } else {
+            if (state.xterm) state.xterm.write(raw);
+          }
         }
       }
     }
@@ -874,6 +920,255 @@ document.addEventListener('keydown', e => {
 });
 window.addEventListener('resize', () => { if (state.fitAddon) state.fitAddon.fit(); });
 
+// ── E2E Encryption (WebCrypto) ─────────────────────────────────────────────────
+//
+// Scheme: ECDH P-256 key agreement → HKDF-SHA-256 → AES-256-GCM per message.
+// ── E2E Encryption ─────────────────────────────────────────────────────────────
+// Zero-knowledge relay: the server stores only ciphertext and public keys.
+// Private key is wrapped with a PBKDF2-derived key from the user's password,
+// allowing any browser to reconstruct the keypair after login.
+
+const E2E_DB_NAME = 'agentcockpit-crypto';
+const E2E_DB_VERSION = 1;
+const E2E_STORE_NAME = 'keys';
+const E2E_KEY_ID = 'userKeypair';
+const SESSION_KEY_CACHE = new Map(); // sessionId → CryptoKey
+
+function openCryptoDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(E2E_DB_NAME, E2E_DB_VERSION);
+    req.onupgradeneeded = e => e.target.result.createObjectStore(E2E_STORE_NAME);
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror = e => reject(e.target.error);
+  });
+}
+
+function idbGet(db, key) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(E2E_STORE_NAME, 'readonly');
+    const req = tx.objectStore(E2E_STORE_NAME).get(key);
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror = e => reject(e.target.error);
+  });
+}
+
+function idbPut(db, key, value) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(E2E_STORE_NAME, 'readwrite');
+    const req = tx.objectStore(E2E_STORE_NAME).put(value, key);
+    req.onsuccess = () => resolve();
+    req.onerror = e => reject(e.target.error);
+  });
+}
+
+// Derive an AES-256-GCM wrapping key from a password + salt using PBKDF2-SHA-256.
+async function deriveWrappingKey(password, saltBytes) {
+  const baseKey = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', hash: 'SHA-256', salt: saltBytes, iterations: 600000 },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+// Encrypt a PKCS#8 private key with a wrapping key → base64 [IV][ciphertext].
+async function encryptPrivateKey(wrappingKey, privateKey) {
+  const pkcs8 = await crypto.subtle.exportKey('pkcs8', privateKey);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, wrappingKey, pkcs8);
+  const out = new Uint8Array(12 + ct.byteLength);
+  out.set(iv);
+  out.set(new Uint8Array(ct), 12);
+  return btoa(String.fromCharCode(...out));
+}
+
+// Decrypt a wrapped PKCS#8 private key → CryptoKey.
+async function decryptPrivateKey(wrappingKey, encB64) {
+  const blob = Uint8Array.from(atob(encB64), c => c.charCodeAt(0));
+  const pkcs8 = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: blob.slice(0, 12) }, wrappingKey, blob.slice(12)
+  );
+  return crypto.subtle.importKey(
+    'pkcs8', pkcs8, { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey', 'deriveBits']
+  );
+}
+
+// Ensure the user has a P-256 ECDH keypair available.
+//
+// Flow A — IndexedDB hit (common case, any browser after first login):
+//   Return cached keypair immediately.
+//
+// Flow B — New browser, server has wrapped key (password required):
+//   Derive wrapping key from password → decrypt private key → re-import public key from server
+//   → store in IndexedDB.
+//
+// Flow C — First ever login (no key anywhere):
+//   Generate new keypair → wrap private key with password → upload public key + wrapped blob
+//   → store in IndexedDB.
+//
+// Flow D — Page reload with saved token, no password available:
+//   Falls back to IndexedDB only; if not found, E2E runs without a key (graceful degradation).
+//   User re-logs in to restore the key on this browser.
+async function ensureUserKeypair(password, userData) {
+  try {
+    const db = await openCryptoDB();
+    const stored = await idbGet(db, E2E_KEY_ID);
+    if (stored) return stored;
+
+    let kp;
+
+    if (password && userData?.e2eEncryptedPrivKey && userData?.e2ePbkdf2Salt) {
+      // Flow B: unwrap existing key from server using the login password.
+      const saltBytes = Uint8Array.from(atob(userData.e2ePbkdf2Salt), c => c.charCodeAt(0));
+      const wrappingKey = await deriveWrappingKey(password, saltBytes);
+      const privateKey = await decryptPrivateKey(wrappingKey, userData.e2eEncryptedPrivKey);
+      // Re-import the public key (stored unencrypted on server).
+      const spkiBytes = Uint8Array.from(atob(userData.e2ePublicKey), c => c.charCodeAt(0));
+      const publicKey = await crypto.subtle.importKey(
+        'spki', spkiBytes, { name: 'ECDH', namedCurve: 'P-256' }, true, []
+      );
+      kp = { privateKey, publicKey };
+    } else {
+      // Flow C: generate a brand-new keypair.
+      kp = await crypto.subtle.generateKey(
+        { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey', 'deriveBits']
+      );
+      const spkiBytes = await crypto.subtle.exportKey('spki', kp.publicKey);
+      const spkiB64 = btoa(String.fromCharCode(...new Uint8Array(spkiBytes)));
+
+      if (password) {
+        // Wrap the private key and upload all material together.
+        const saltBytes = crypto.getRandomValues(new Uint8Array(16));
+        const saltB64 = btoa(String.fromCharCode(...saltBytes));
+        const wrappingKey = await deriveWrappingKey(password, saltBytes);
+        const encPrivKey = await encryptPrivateKey(wrappingKey, kp.privateKey);
+        await api('PUT', '/api/me/e2e-pubkey', {
+          publicKey: spkiB64, encryptedPrivKey: encPrivKey, pbkdf2Salt: saltB64,
+        });
+      } else {
+        // Flow D: no password — upload public key only (no wrapping possible).
+        await api('PUT', '/api/me/e2e-pubkey', { publicKey: spkiB64, encryptedPrivKey: '', pbkdf2Salt: '' });
+      }
+    }
+
+    await idbPut(db, E2E_KEY_ID, kp);
+    return kp;
+  } catch (err) {
+    console.warn('E2E: key setup failed', err);
+    return null;
+  }
+}
+
+// Derive (and cache) the AES-256-GCM session key for a given session.
+// agentEphemeralPubKeyB64 is the base64-encoded SPKI of the agent's ephemeral key.
+async function getSessionKey(sessionId, agentEphemeralPubKeyB64) {
+  if (SESSION_KEY_CACHE.has(sessionId)) return SESSION_KEY_CACHE.get(sessionId);
+  if (!agentEphemeralPubKeyB64) return null;
+
+  const kp = await ensureUserKeypair(null, null);
+  if (!kp) return null;
+
+  try {
+    // Import agent's ephemeral public key (SPKI base64 → CryptoKey).
+    const spkiBytes = Uint8Array.from(atob(agentEphemeralPubKeyB64), c => c.charCodeAt(0));
+    const agentPub = await crypto.subtle.importKey(
+      'spki', spkiBytes,
+      { name: 'ECDH', namedCurve: 'P-256' },
+      false, []
+    );
+
+    // ECDH → raw shared secret bits.
+    const sharedBits = await crypto.subtle.deriveBits(
+      { name: 'ECDH', public: agentPub },
+      kp.privateKey,
+      256
+    );
+
+    // HKDF-SHA-256 → 256-bit AES-GCM key.
+    const hkdfKey = await crypto.subtle.importKey('raw', sharedBits, 'HKDF', false, ['deriveKey']);
+    const sessionKey = await crypto.subtle.deriveKey(
+      {
+        name: 'HKDF',
+        hash: 'SHA-256',
+        salt: new TextEncoder().encode(sessionId),
+        info: new TextEncoder().encode('agentcockpit-session-v1'),
+      },
+      hkdfKey,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+    SESSION_KEY_CACHE.set(sessionId, sessionKey);
+    return sessionKey;
+  } catch (err) {
+    console.warn('E2E: session key derivation failed', err);
+    return null;
+  }
+}
+
+// Decrypt a PTY chunk: [12-byte IV][AES-GCM ciphertext+tag] → Uint8Array plaintext.
+async function decryptChunk(sessionKey, encBytes, sessionId) {
+  if (!sessionKey) return encBytes; // fallback: pass through if no key
+  try {
+    const iv = encBytes.slice(0, 12);
+    const ciphertext = encBytes.slice(12);
+    const plaintext = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(sessionId) },
+      sessionKey,
+      ciphertext
+    );
+    return new Uint8Array(plaintext);
+  } catch {
+    return null; // decryption failed — drop
+  }
+}
+
+// Encrypt stdin bytes: Uint8Array → [12-byte IV][AES-GCM ciphertext+tag].
+async function encryptStdin(sessionKey, plainBytes, sessionId) {
+  if (!sessionKey) return plainBytes;
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(sessionId) },
+    sessionKey,
+    plainBytes
+  );
+  const out = new Uint8Array(12 + ciphertext.byteLength);
+  out.set(iv);
+  out.set(new Uint8Array(ciphertext), 12);
+  return out;
+}
+
+// Decrypt an approval request encrypted payload.
+// Returns { toolName, toolInput, riskLevel } or null on failure.
+async function decryptApprovalPayload(sessionId, encB64, requestId) {
+  if (!encB64) return null;
+  const sessionKey = SESSION_KEY_CACHE.get(sessionId);
+  if (!sessionKey) return null;
+  try {
+    const blob = Uint8Array.from(atob(encB64), c => c.charCodeAt(0));
+    const iv = blob.slice(0, 12);
+    const ciphertext = blob.slice(12);
+    const plaintext = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(requestId) },
+      sessionKey,
+      ciphertext
+    );
+    return JSON.parse(new TextDecoder().decode(plaintext));
+  } catch {
+    return null;
+  }
+}
+
+// Called once after successful auth to boot E2E crypto.
+// password and userData are available during login/register; absent on page reload.
+async function initE2E(password, userData) {
+  await ensureUserKeypair(password, userData);
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────────
 
 (async function initByRoute() {
@@ -890,10 +1185,6 @@ window.addEventListener('resize', () => { if (state.fitAddon) state.fitAddon.fit
     if (state.token) { location.href = '/dashboard'; return; }
     setAuthMode('login');
     showAuth();
-    return;
-  }
-  if (state.token) {
-    showHome();
     return;
   }
   setAuthMode('login');

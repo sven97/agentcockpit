@@ -4,7 +4,1213 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AgentCockpit</title>
-<link rel="stylesheet" href="/app.css">
+<style>
+:root {
+  --bg:       #080808;
+  --surface:  #0f0f0f;
+  --card:     #131313;
+  --card-soft:#171717;
+  --border:   #1f1f1f;
+  --border2:  #2a2a2a;
+  --text:     #d8d8d8;
+  --dim:      #909090;  /* 6.4:1 on --bg — WCAG AA */
+  --dimmer:   #787878;  /* 4.6:1 on --bg — WCAG AA */
+  --green:    #00d67c;
+  --green-bg: #00d67c14;
+  --amber:    #f5a623;
+  --amber-bg: #f5a62314;
+  --orange:   #f97316;
+  --orange-bg:#f9731614;
+  --red:      #ef4444;
+  --red-bg:   #ef444414;
+  --blue:     #3b82f6;
+  --blue-bg:  #3b82f614;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --shadow: 0 16px 44px rgba(0,0,0,.33);
+  --font:     'SF Mono','Fira Code','Cascadia Code','Consolas','Courier New',monospace;
+}
+
+[data-theme="light"] {
+  --bg:       #f0f0f0;
+  --surface:  #ffffff;
+  --card:     #ffffff;
+  --card-soft:#fbfbfb;
+  --border:   #e0e0e0;
+  --border2:  #cccccc;
+  --text:     #111111;
+  --dim:      #555555;  /* 7.7:1 on --bg — WCAG AA */
+  --dimmer:   #717171;  /* 4.6:1 on --bg — WCAG AA */
+  --green:    #007a42;  /* 5.1:1 on --bg — WCAG AA */
+  --green-bg: #007a4214;
+  --amber:    #b56a00;
+  --amber-bg: #b56a0014;
+  --orange:   #c2410c;
+  --orange-bg:#c2410c14;
+  --red:      #dc2626;
+  --red-bg:   #dc262614;
+  --blue:     #1d4ed8;
+  --blue-bg:  #1d4ed814;
+  --shadow: 0 14px 30px rgba(0,0,0,.08);
+}
+
+*,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scan-line overlay (dark mode only) ── */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,.06) 2px,
+    rgba(0,0,0,.06) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+[data-theme="light"] body::after { display: none; }
+
+/* ── Landing / Home ── */
+#home {
+  display: none;
+  min-height: 100vh;
+  padding: 34px 24px 40px;
+  align-items: center;
+  justify-content: center;
+}
+#home.visible { display: flex; }
+
+.home-shell {
+  width: min(1080px, 100%);
+  border: 1px solid var(--border2);
+  background: linear-gradient(160deg, var(--surface) 0%, var(--card) 72%);
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+
+.home-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 12% 10%, #00d67c20, transparent 36%),
+    radial-gradient(circle at 90% 88%, #3b82f620, transparent 32%);
+  pointer-events: none;
+}
+
+.home-top {
+  position: relative;
+  border-bottom: 1px solid var(--border);
+  padding: 28px 28px 22px;
+}
+
+.home-wordmark {
+  font-size: 11px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--green);
+  font-weight: 700;
+}
+
+.home-headline {
+  margin-top: 10px;
+  max-width: 20ch;
+  font-size: clamp(27px, 5vw, 40px);
+  line-height: 1.12;
+  color: var(--text);
+}
+
+.home-sub {
+  margin-top: 10px;
+  max-width: 60ch;
+  color: var(--dim);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.home-ctas {
+  margin-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.btn-home {
+  border: 1px solid var(--border2);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  padding: 9px 14px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.btn-home:hover { border-color: var(--green); color: var(--green); }
+.btn-home.primary {
+  background: var(--green);
+  border-color: var(--green);
+  color: #000;
+}
+.btn-home.primary:hover { opacity: .9; color: #000; }
+[data-theme="light"] .btn-home.primary { color: #fff; }
+
+.home-main {
+  position: relative;
+  display: grid;
+  grid-template-columns: 270px 1fr;
+}
+
+.usecase-list {
+  border-right: 1px solid var(--border);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.usecase-btn {
+  border: 1px solid var(--border);
+  background: var(--card-soft);
+  color: var(--dim);
+  text-align: left;
+  font-family: var(--font);
+  padding: 10px 11px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.usecase-btn:hover { border-color: var(--border2); color: var(--text); }
+.usecase-btn.active {
+  border-color: var(--green);
+  background: var(--green-bg);
+  color: var(--green);
+}
+.usecase-btn strong {
+  display: block;
+  font-size: 12px;
+  color: inherit;
+  margin-bottom: 3px;
+}
+.usecase-btn span { font-size: 10px; letter-spacing: .04em; }
+
+.usecase-stage {
+  padding: 20px 22px 22px;
+}
+
+.usecase-kicker {
+  color: var(--dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+}
+
+.usecase-title {
+  margin-top: 6px;
+  font-size: 20px;
+  color: var(--text);
+}
+
+.usecase-summary {
+  margin-top: 7px;
+  color: var(--dim);
+  font-size: 12px;
+  line-height: 1.7;
+  max-width: 70ch;
+}
+
+.timeline {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--bg), var(--card-soft));
+  padding: 10px;
+  border-radius: var(--radius-sm);
+}
+
+.timeline-row {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  gap: 8px;
+  padding: 5px 0;
+  color: var(--dim);
+  font-size: 11px;
+}
+.timeline-row b { color: var(--text); font-weight: 600; }
+.timeline-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 5px;
+  background: var(--dimmer);
+}
+.timeline-row:nth-child(1) .timeline-dot { background: var(--blue); }
+.timeline-row:nth-child(2) .timeline-dot { background: var(--amber); }
+.timeline-row:nth-child(3) .timeline-dot { background: var(--green); }
+
+.usecase-outcome {
+  margin-top: 14px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--green);
+  background: var(--green-bg);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+/* ── Auth Screen ── */
+#auth {
+  display: none;
+  min-height: 100vh;
+  padding: 24px 12px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 0;
+}
+#auth.visible { display: flex; }
+
+.auth-box {
+  width: 380px;
+  border: 1px solid var(--border2);
+  background: linear-gradient(165deg, var(--surface), var(--card-soft));
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.auth-logo {
+  padding: 32px 32px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.auth-logo .wordmark {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .15em;
+  color: var(--green);
+  text-transform: uppercase;
+}
+
+.auth-logo .tagline {
+  font-size: 11px;
+  color: var(--dim);
+  margin-top: 4px;
+  letter-spacing: .05em;
+}
+
+.auth-form {
+  padding: 24px 32px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field label {
+  display: block;
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 6px;
+}
+
+.field input {
+  width: 100%;
+  background: var(--card);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  padding: 9px 12px;
+  outline: none;
+  transition: border-color .15s;
+}
+
+.field input:focus { border-color: var(--green); }
+
+.btn-primary {
+  background: var(--green);
+  color: #000;
+  border: 1px solid var(--green);
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  padding: 10px 20px;
+  cursor: pointer;
+  width: 100%;
+  margin-top: 4px;
+  transition: opacity .15s, transform .15s, box-shadow .15s;
+  border-radius: var(--radius-sm);
+}
+.btn-primary:hover { opacity: .92; transform: translateY(-1px); box-shadow: 0 0 0 3px var(--green-bg); }
+.btn-primary:disabled { opacity: .4; cursor: not-allowed; }
+[data-theme="light"] .btn-primary { color: #fff; }
+
+#auth-error, #reg-error {
+  font-size: 11px;
+  color: var(--red);
+  text-align: center;
+  min-height: 16px;
+}
+
+/* ── App Shell ── */
+#app {
+  display: none;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+#app.visible { display: flex; }
+
+/* ── Header ── */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  height: 44px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: linear-gradient(180deg, var(--surface), var(--card-soft));
+}
+
+.logo {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--green);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.ws-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  letter-spacing: .08em;
+  color: var(--dim);
+}
+
+.ws-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--dimmer);
+  transition: background .3s;
+}
+.ws-dot.connected { background: var(--green); }
+.ws-dot.connecting { background: var(--amber); animation: blink 1s infinite; }
+
+@keyframes blink {
+  0%,100% { opacity: 1; }
+  50% { opacity: .3; }
+}
+
+.btn-ghost {
+  background: var(--card-soft);
+  border: 1px solid var(--border2);
+  color: var(--dim);
+  font-family: var(--font);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: all .15s;
+  border-radius: var(--radius-sm);
+}
+.btn-ghost:hover { border-color: var(--green); color: var(--green); }
+.btn-theme { font-size: 14px; text-transform: none; letter-spacing: 0; padding: 3px 9px; }
+
+/* ── Approvals Banner ── */
+#approvals-section {
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--dim);
+  position: sticky;
+  top: 0;
+  background: linear-gradient(180deg, var(--surface), var(--card-soft));
+  border-bottom: 1px solid var(--border);
+  z-index: 10;
+}
+
+.section-header .count {
+  background: var(--border2);
+  color: var(--text);
+  font-size: 10px;
+  padding: 1px 6px;
+  min-width: 20px;
+  text-align: center;
+  border-radius: 999px;
+}
+
+.section-header.alert-header {
+  background: #1a0f00;
+  border-bottom-color: #3a2000;
+  color: var(--amber);
+}
+
+.section-header.alert-header .count {
+  background: var(--amber);
+  color: #000;
+}
+
+.approvals-list {
+  padding: 12px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: linear-gradient(180deg, transparent, var(--card-soft));
+}
+
+.approval-card {
+  border: 1px solid var(--border2);
+  background: linear-gradient(160deg, var(--card), var(--card-soft));
+  animation: slideIn .2s ease;
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+}
+
+.approval-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+}
+
+.approval-card.risk-read::before    { background: var(--green); }
+.approval-card.risk-write::before   { background: var(--amber); }
+.approval-card.risk-execute::before { background: var(--orange); }
+.approval-card.risk-destructive::before { background: var(--red); }
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.approval-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px 10px;
+}
+
+.risk-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  flex-shrink: 0;
+}
+
+.risk-badge.read        { color: var(--green);  background: var(--green-bg);  }
+.risk-badge.write       { color: var(--amber);  background: var(--amber-bg);  }
+.risk-badge.execute     { color: var(--orange); background: var(--orange-bg); }
+.risk-badge.destructive { color: var(--red);    background: var(--red-bg);    }
+
+.tool-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+}
+
+.approval-meta {
+  padding: 0 16px 10px;
+  font-size: 10px;
+  color: var(--dim);
+  letter-spacing: .04em;
+}
+
+.tool-input-toggle {
+  background: none;
+  border: none;
+  color: var(--dim);
+  font-family: var(--font);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0;
+  letter-spacing: .04em;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+.tool-input-toggle:hover { color: var(--text); }
+
+.tool-input-body {
+  display: none;
+  margin: 6px 16px 10px;
+  padding: 10px;
+  background: var(--card-soft);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--dim);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 120px;
+  overflow-y: auto;
+  line-height: 1.6;
+}
+.tool-input-body.open { display: block; }
+
+.approval-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: 1px solid var(--border);
+}
+
+.btn-allow, .btn-deny {
+  border: none;
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  padding: 11px 20px;
+  cursor: pointer;
+  transition: opacity .15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.btn-allow {
+  background: var(--green-bg);
+  color: var(--green);
+  border-right: 1px solid var(--border);
+}
+.btn-allow:hover { background: #00d67c22; }
+
+.btn-deny {
+  background: var(--red-bg);
+  color: var(--red);
+}
+.btn-deny:hover { background: #ef444422; }
+
+.btn-allow:disabled, .btn-deny:disabled { opacity: .4; cursor: not-allowed; }
+
+.empty-state {
+  padding: 24px 20px;
+  font-size: 11px;
+  color: var(--dimmer);
+  letter-spacing: .04em;
+}
+
+.setup-card {
+  margin: 16px;
+  border: 1px solid var(--border2);
+  background: linear-gradient(160deg, var(--card), var(--card-soft));
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.setup-card-title {
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--green);
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.setup-step {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.setup-step:last-child { border-bottom: none; }
+
+.setup-step-label {
+  font-size: 10px;
+  color: var(--dim);
+  letter-spacing: .08em;
+  margin-bottom: 6px;
+}
+
+.setup-cmd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 7px 10px;
+}
+
+.setup-cmd code {
+  flex: 1;
+  font-family: var(--font);
+  font-size: 11px;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.copy-btn {
+  background: none;
+  border: none;
+  color: var(--dim);
+  font-family: var(--font);
+  font-size: 10px;
+  letter-spacing: .08em;
+  cursor: pointer;
+  padding: 2px 4px;
+  flex-shrink: 0;
+  transition: color .15s;
+}
+.copy-btn:hover { color: var(--green); }
+
+/* ── Add Host Modal ── */
+.modal-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.75);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+.modal-backdrop.visible { display: flex; }
+
+.modal {
+  width: 480px;
+  max-width: calc(100vw - 32px);
+  background: linear-gradient(165deg, var(--surface), var(--card-soft));
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-title {
+  font-size: 11px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--green);
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--dim);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.modal-close:hover { color: var(--text); }
+
+.modal-body { padding: 18px; display: flex; flex-direction: column; gap: 18px; }
+
+.modal-step {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modal-step-label {
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.modal-step-label strong { color: var(--text); }
+
+.modal-step p {
+  font-size: 11px;
+  color: var(--dim);
+  line-height: 1.6;
+}
+
+.modal-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+.modal-code-input {
+  width: 100%;
+  background: var(--card);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  letter-spacing: .25em;
+  text-align: center;
+  text-transform: uppercase;
+  padding: 12px;
+  outline: none;
+  transition: border-color .15s;
+}
+.modal-code-input:focus { border-color: var(--green); }
+.modal-code-input::placeholder { letter-spacing: .1em; font-size: 12px; }
+
+.modal-error {
+  font-size: 11px;
+  color: var(--red);
+  text-align: center;
+  min-height: 14px;
+}
+
+.modal-success {
+  text-align: center;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modal-success-icon {
+  font-size: 28px;
+  color: var(--green);
+}
+
+.modal-success-text {
+  font-size: 12px;
+  color: var(--text);
+  letter-spacing: .05em;
+}
+
+.modal-success-sub {
+  font-size: 11px;
+  color: var(--dim);
+}
+
+/* ── Main columns ── */
+.columns {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  flex: 1;
+  overflow: hidden;
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.col:first-child { border-right: 1px solid var(--border); }
+
+.col-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 0;
+}
+
+/* ── Host rows ── */
+.host-row {
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  cursor: default;
+  transition: background .1s, border-color .1s;
+}
+.host-row:hover { background: var(--card-soft); border-bottom-color: var(--border2); }
+.host-row:last-child { border-bottom: none; }
+
+.host-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot.online {
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  animation: pulse 2.5s infinite;
+}
+
+@keyframes pulse {
+  0%,100% { box-shadow: 0 0 6px var(--green); }
+  50%      { box-shadow: 0 0 12px var(--green), 0 0 4px var(--green); }
+}
+
+.status-dot.offline { background: var(--dimmer); }
+
+.host-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.host-platform {
+  font-size: 10px;
+  color: var(--dimmer);
+  letter-spacing: .06em;
+  background: var(--border);
+  padding: 1px 5px;
+  border-radius: 999px;
+}
+
+.host-meta {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--dimmer);
+  padding-left: 15px;
+  letter-spacing: .03em;
+}
+
+.host-remove {
+  background: none;
+  border: none;
+  color: transparent;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color .15s;
+  flex-shrink: 0;
+}
+.host-row:hover .host-remove { color: var(--dimmer); }
+.host-remove:hover { color: var(--red) !important; }
+
+.btn-authorize {
+  margin-left: auto;
+  background: var(--amber-bg);
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  font-family: var(--font);
+  font-size: 11px;
+  padding: 2px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background .15s;
+}
+.btn-authorize:hover { background: #f5a62330; }
+
+/* ── Session rows ── */
+.session-row {
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  transition: background .1s, border-color .1s;
+}
+.session-row:hover { background: var(--card-soft); border-bottom-color: var(--border2); }
+.session-row:last-child { border-bottom: none; }
+
+.session-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.session-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  flex-shrink: 0;
+  border-radius: 999px;
+}
+
+.status-badge.running           { color: var(--blue);  background: var(--blue-bg);  }
+.status-badge.awaiting_approval { color: var(--amber); background: var(--amber-bg); }
+.status-badge.starting          { color: var(--dim);   background: var(--border);   }
+.status-badge.stopped           { color: var(--dimmer);background: var(--border);   }
+.status-badge.error             { color: var(--red);   background: var(--red-bg);   }
+
+.session-meta {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--dimmer);
+  padding-left: 15px;
+  letter-spacing: .03em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Token bar ── */
+.token-bar-wrap {
+  margin-top: 5px;
+  padding-left: 15px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.token-bar-track {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+.token-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--green);
+  transition: width .4s ease, background .4s;
+}
+.token-bar-fill.warn  { background: var(--amber); }
+.token-bar-fill.crit  { background: var(--red); }
+.token-bar-label {
+  font-size: 10px;
+  color: var(--dimmer);
+  white-space: nowrap;
+  letter-spacing: .03em;
+}
+
+/* ── Loading / skeleton ── */
+.loading {
+  padding: 20px;
+  color: var(--dimmer);
+  font-size: 11px;
+  letter-spacing: .06em;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--border) 25%, var(--border2) 50%, var(--border) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  height: 12px;
+  margin-bottom: 8px;
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+/* ── Scrollbars ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); }
+
+/* ── Toast notifications ── */
+#toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1000;
+}
+
+.toast {
+  background: linear-gradient(160deg, var(--surface), var(--card-soft));
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-size: 11px;
+  padding: 10px 14px;
+  animation: toastIn .2s ease, toastOut .3s ease 2.7s forwards;
+  max-width: 280px;
+  letter-spacing: .04em;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+}
+
+@keyframes toastIn  { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:none; } }
+@keyframes toastOut { from { opacity:1; } to { opacity:0; } }
+
+/* ── Responsive ── */
+@media (max-width: 640px) {
+  .columns { grid-template-columns: 1fr; }
+  .col:first-child { display: none; }
+  #home { padding: 16px 10px 24px; }
+  .home-top { padding: 18px 14px 14px; }
+  .home-main { grid-template-columns: 1fr; }
+  .usecase-list {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 12px;
+  }
+  .usecase-stage { padding: 14px 12px 14px; }
+}
+
+/* ── Approval badge in header ── */
+.btn-approval-badge {
+  background: var(--amber-bg);
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  font-family: var(--font);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  cursor: pointer;
+  animation: blink 1.4s infinite;
+  transition: opacity .15s;
+}
+.btn-approval-badge:hover { opacity: .8; }
+
+/* ── Approvals collapsible ── */
+#approvals-section {
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height .25s ease;
+}
+#approvals-section.open {
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+/* ── Session action buttons ── */
+.session-actions { display: flex; gap: 5px; margin-left: auto; }
+
+.btn-session-action {
+  background: var(--card-soft);
+  border: 1px solid var(--border2);
+  color: var(--dim);
+  font-family: var(--font);
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: all .15s;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.btn-session-action:hover { color: var(--text); border-color: var(--green); }
+.btn-session-action.live:hover { border-color: var(--blue); color: var(--blue); }
+.btn-session-action.danger:hover { border-color: var(--red); color: var(--red); }
+
+/* ── Session timestamp ── */
+.session-time {
+  font-size: 10px;
+  color: var(--dimmer);
+  letter-spacing: .03em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── New session / field select ── */
+.field-select {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  padding: 9px 12px;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23777'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 30px;
+}
+.field-select:focus { border-color: var(--green); }
+
+/* ── Terminal overlay ── */
+#term-modal { z-index: 1100; }
+
+.term-container {
+  width: 92vw;
+  max-width: 1200px;
+  height: 85vh;
+  display: flex;
+  flex-direction: column;
+  background: #0d0d0d;
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.term-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--surface);
+}
+
+.term-title {
+  font-size: 13px;
+  color: var(--green);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#xterm-container {
+  flex: 1;
+  min-height: 0; /* prevents flex child from overflowing its parent */
+  overflow: hidden;
+  padding: 6px 8px;
+  background: #0d0d0d;
+}
+
+/* xterm.js internal overrides — don't fight xterm's row-height math */
+.xterm { height: 100%; }
+.xterm-viewport { border-radius: 0; }
+</style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500&display=swap">
@@ -19,34 +1225,29 @@
   <div class="home-shell">
     <div class="home-top">
       <div class="home-wordmark">AgentCockpit.app</div>
-      <h1 class="home-headline">Operate Claude Code, Codex CLI, and OpenCode from one secure control plane.</h1>
+      <h1 class="home-headline">Keep every AI coding session under human control.</h1>
       <p class="home-sub">
-        AgentCockpit gives solo developers a professional approval gateway: inspect risky tool calls, approve from anywhere, and keep shipping without giving full machine autonomy to any single agent.
+        Route tool approvals from Codex/Claude to one browser dashboard, watch sessions in real time, and unblock work from anywhere.
       </p>
       <div class="home-ctas">
         <button class="btn-home primary" id="home-open-dashboard">Open dashboard</button>
         <button class="btn-home" id="home-sign-in">Sign in</button>
         <button class="btn-home" id="home-register">Create account</button>
       </div>
-      <div class="home-proof">
-        <span class="proof-chip">Secure by default</span>
-        <span class="proof-chip">Low-latency approvals</span>
-        <span class="proof-chip">Works with existing agent tools</span>
-      </div>
     </div>
     <div class="home-main">
       <div class="usecase-list">
         <button class="usecase-btn active" data-usecase="solo">
-          <strong>Night coding session</strong>
-          <span>Keep coding while approvals stay explicit</span>
+          <strong>Solo builder</strong>
+          <span>Approve risky commands from your phone</span>
         </button>
         <button class="usecase-btn" data-usecase="team">
-          <strong>Remote workstation</strong>
-          <span>Approve from laptop or phone away from desk</span>
+          <strong>Small engineering team</strong>
+          <span>Shared gate for production-impacting tools</span>
         </button>
         <button class="usecase-btn" data-usecase="consulting">
-          <strong>Freelance delivery</strong>
-          <span>Show exactly what agent actions were allowed</span>
+          <strong>Client consulting</strong>
+          <span>Audit trail for what the agent executed</span>
         </button>
       </div>
       <div class="usecase-stage">
@@ -203,6 +1404,1174 @@
 
 <div id="toast-container"></div>
 
-<script src="/app.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+
+const state = {
+  token: localStorage.getItem('ac_token'),
+  hosts: [],
+  sessions: [],
+  approvals: [],
+  sessionTokens: {}, // sessionId → { inputTokens, contextWindowSize }
+  pendingDevices: [],
+  ws: null,
+  wsState: 'disconnected',
+};
+
+const USE_CASES = {
+  solo: {
+    title: 'Ship fast without handing over root access',
+    summary: 'You let Codex run locally while you commute. AgentCockpit pauses sensitive tools, notifies you, and resumes instantly after approval.',
+    timeline: [
+      '<b>Agent proposes:</b> run migration + write to prod config.',
+      '<b>You review:</b> command + input details in the browser.',
+      '<b>You approve or deny:</b> session continues with your decision.',
+    ],
+    outcome: 'Result: fewer accidental destructive changes while keeping autonomous coding speed.',
+  },
+  team: {
+    title: 'One approval lane for all developers and agents',
+    summary: 'Your team runs multiple coding agents. High-risk actions are routed into one shared cockpit so teammates can approve quickly and consistently.',
+    timeline: [
+      '<b>Agents run in parallel:</b> each host streams approvals to one UI.',
+      '<b>On-call engineer reviews:</b> pending items sorted by risk level.',
+      '<b>Decision is recorded:</b> everyone sees what was allowed or denied.',
+    ],
+    outcome: 'Result: safe velocity during releases without blocking every low-risk command.',
+  },
+  consulting: {
+    title: 'Give clients visibility without exposing your machine',
+    summary: 'When building for a client, you can show exactly what the agent asked to execute and what you approved.',
+    timeline: [
+      '<b>Client demo starts:</b> live session appears in dashboard.',
+      '<b>Critical action appears:</b> approval card shows full tool input.',
+      '<b>You keep control:</b> deny anything outside agreed scope.',
+    ],
+    outcome: 'Result: trust and traceability for AI-assisted work in regulated or sensitive projects.',
+  },
+};
+
+// ── API ────────────────────────────────────────────────────────────────────────
+
+async function api(method, path, body) {
+  try {
+    const res = await fetch(path, {
+      method,
+      headers: {
+        'Authorization': `Bearer ${state.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (res.status === 401) { logout(); return null; }
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || res.statusText);
+    }
+    if (res.status === 204 || res.headers.get('content-length') === '0') return null;
+    const ct = res.headers.get('content-type') || '';
+    if (ct.includes('application/json')) return res.json();
+    return null;
+  } catch (e) {
+    if (e.name !== 'TypeError') throw e; // network error
+    return null;
+  }
+}
+
+// ── Auth ───────────────────────────────────────────────────────────────────────
+
+function showAuth() {
+  $('home').classList.remove('visible');
+  $('auth').classList.add('visible');
+  $('app').classList.remove('visible');
+}
+
+function showApp(password, userData) {
+  $('home').classList.remove('visible');
+  $('auth').classList.remove('visible');
+  $('app').classList.add('visible');
+  initE2E(password, userData); // boot E2E crypto — unwraps or generates keypair
+  fetchAll();
+  connectWS();
+}
+
+function showHome() {
+  $('home').classList.add('visible');
+  $('auth').classList.remove('visible');
+  $('app').classList.remove('visible');
+}
+
+function setAuthMode(mode) {
+  const login = mode !== 'register';
+  $('login-form').style.display = login ? 'flex' : 'none';
+  $('register-form').style.display = login ? 'none' : 'flex';
+  $('auth-error').textContent = '';
+  $('reg-error').textContent = '';
+}
+
+function renderUseCase(key) {
+  const uc = USE_CASES[key] || USE_CASES.solo;
+  $('usecase-title').textContent = uc.title;
+  $('usecase-summary').textContent = uc.summary;
+  $('usecase-timeline').innerHTML = uc.timeline.map(line => `
+    <div class="timeline-row">
+      <span class="timeline-dot"></span>
+      <span>${line}</span>
+    </div>
+  `).join('');
+  $('usecase-outcome').textContent = uc.outcome;
+  document.querySelectorAll('.usecase-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.usecase === key);
+  });
+}
+
+async function openDashboardFromHome() {
+  if (state.token) { showApp(); return; }
+  try {
+    const res = await fetch('/api/me');
+    if (res.ok) { showApp(); return; }
+  } catch {}
+  showAuth();
+  setAuthMode('login');
+}
+
+function logout() {
+  if (state.ws) { state.ws.close(); state.ws = null; }
+  state.token = null;
+  localStorage.removeItem('ac_token');
+  showHome();
+}
+
+$('login-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = $('login-btn');
+  const errEl = $('auth-error');
+  errEl.textContent = '';
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
+  try {
+    const password = $('password').value;
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: $('email').value.trim(),
+        password,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.error || 'Login failed';
+      return;
+    }
+    state.token = data.token;
+    localStorage.setItem('ac_token', data.token);
+    showApp(password, data.user);
+  } catch (err) {
+    errEl.textContent = 'Network error — is the server running?';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sign in';
+  }
+});
+
+$('logout-btn').addEventListener('click', logout);
+
+// ── Theme toggle ───────────────────────────────────────────────────────────────
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  $('theme-btn').textContent = theme === 'light' ? '◑' : '◐';
+  localStorage.setItem('ac_theme', theme);
+}
+(function initTheme() {
+  const saved = localStorage.getItem('ac_theme');
+  const preferred = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  applyTheme(saved || preferred);
+})();
+$('approval-badge').addEventListener('click', toggleApprovals);
+$('theme-btn').addEventListener('click', () => {
+  const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+  applyTheme(next);
+});
+
+$('home-open-dashboard').addEventListener('click', openDashboardFromHome);
+$('home-sign-in').addEventListener('click', () => {
+  showAuth();
+  setAuthMode('login');
+  $('email').focus();
+});
+$('home-register').addEventListener('click', () => {
+  showAuth();
+  setAuthMode('register');
+  $('reg-name').focus();
+});
+document.querySelectorAll('.usecase-btn').forEach(btn => {
+  btn.addEventListener('click', () => renderUseCase(btn.dataset.usecase));
+});
+renderUseCase('solo');
+
+$('show-register').addEventListener('click', e => {
+  e.preventDefault();
+  setAuthMode('register');
+  $('reg-name').focus();
+});
+
+$('show-login').addEventListener('click', e => {
+  e.preventDefault();
+  setAuthMode('login');
+  $('email').focus();
+});
+
+$('register-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = $('register-btn');
+  const errEl = $('reg-error');
+  errEl.textContent = '';
+  btn.disabled = true;
+  btn.textContent = 'Creating...';
+  try {
+    const password = $('reg-password').value;
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: $('reg-name').value.trim(),
+        email: $('reg-email').value.trim(),
+        password,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.error || 'Registration failed';
+      return;
+    }
+    state.token = data.token;
+    localStorage.setItem('ac_token', data.token);
+    showApp(password, data.user);
+  } catch (err) {
+    errEl.textContent = 'Network error — is the server running?';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Create account';
+  }
+});
+
+// ── Data fetching ──────────────────────────────────────────────────────────────
+
+async function fetchAll() {
+  const [hosts, sessions, approvals, pending] = await Promise.all([
+    api('GET', '/api/hosts'),
+    api('GET', '/api/sessions'),
+    api('GET', '/api/approvals'),
+    api('GET', '/api/device/pending'),
+  ]);
+  if (hosts    !== null) { state.hosts          = hosts    || []; renderHosts(); }
+  if (sessions !== null) { state.sessions       = sessions || []; renderSessions(); }
+  if (approvals!== null) { state.approvals      = approvals|| []; renderApprovals(); }
+  if (pending  !== null) { state.pendingDevices = pending  || []; renderHosts(); }
+}
+
+// Poll for pending device authorizations every 4s so new `agentcockpit install`
+// invocations appear in the dashboard without a manual refresh.
+setInterval(async () => {
+  if (!state.token) return;
+  const pending = await api('GET', '/api/device/pending');
+  if (pending !== null) {
+    const changed = JSON.stringify(pending) !== JSON.stringify(state.pendingDevices);
+    state.pendingDevices = pending || [];
+    if (changed) {
+      renderHosts();
+      // Also refresh host list in case an authorization just completed.
+      const hosts = await api('GET', '/api/hosts');
+      if (hosts !== null) { state.hosts = hosts || []; renderHosts(); }
+    }
+  }
+}, 4000);
+
+// ── WebSocket ──────────────────────────────────────────────────────────────────
+
+function setWS(s) {
+  state.wsState = s;
+  const dot   = $('ws-dot');
+  const label = $('ws-label');
+  dot.className = 'ws-dot ' + s;
+  label.textContent = s;
+}
+
+function connectWS() {
+  if (state.ws) return;
+  setWS('connecting');
+
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/ws/browser?token=${state.token}`);
+  ws.binaryType = 'arraybuffer';
+  state.ws = ws;
+
+  ws.onopen = () => {
+    setWS('connected');
+    fetchAll();
+  };
+
+  ws.onclose = () => {
+    state.ws = null;
+    setWS('disconnected');
+    // Reconnect after 5s
+    setTimeout(() => { if (state.token) connectWS(); }, 5000);
+  };
+
+  ws.onerror = () => {
+    ws.close();
+  };
+
+  ws.onmessage = e => {
+    if (e.data instanceof ArrayBuffer) {
+      // Binary PTY frame: [0x01][32-byte hex sessionId][payload]
+      // payload = [12-byte IV][ciphertext+tag] when E2E active, else raw PTY bytes.
+      const buf = new Uint8Array(e.data);
+      if (buf.length < 33 || buf[0] !== 0x01) return;
+      const sessionId = String.fromCharCode(...buf.slice(1, 33));
+      if (state.attachedSession && sessionId === state.attachedSession) {
+        const payload = buf.slice(33);
+        const key = SESSION_KEY_CACHE.get(sessionId);
+        if (key) {
+          decryptChunk(key, payload, sessionId).then(plain => {
+            if (plain) termWrite(plain);
+          });
+        } else {
+          termWrite(payload); // no key: pre-E2E session or key not yet derived
+        }
+      }
+      return;
+    }
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
+    handleWS(msg);
+  };
+}
+
+function handleWS(msg) {
+  switch (msg.type) {
+    case 'host_status': {
+      const h = state.hosts.find(h => h.ID === msg.hostId);
+      if (h) {
+        h.Status = msg.status;
+        renderHosts();
+      } else {
+        fetchAll(); // new host appeared
+      }
+      break;
+    }
+    case 'approval_request': {
+      // Avoid duplicates
+      if (!state.approvals.find(a => a.ID === msg.requestId)) {
+        const addApproval = (toolName, toolInput, riskLevel) => {
+          if (state.approvals.find(a => a.ID === msg.requestId)) return; // guard re-entry
+          state.approvals.unshift({
+            ID: msg.requestId,
+            SessionID: msg.sessionId,
+            ToolName: toolName || '(encrypted)',
+            ToolInput: typeof toolInput === 'string' ? toolInput : JSON.stringify(toolInput, null, 2),
+            RiskLevel: riskLevel || '',
+            Status: 'pending',
+          });
+          renderApprovals();
+          toast(`⚠ Approval needed: ${toolName || '(encrypted)'}`);
+        };
+        if (msg.enc) {
+          // E2E mode: decrypt before rendering.
+          decryptApprovalPayload(msg.sessionId, msg.enc, msg.requestId).then(p => {
+            addApproval(p?.toolName, p?.toolInput, p?.riskLevel);
+          });
+        } else {
+          addApproval(msg.toolName, msg.toolInput, msg.riskLevel);
+        }
+      }
+      break;
+    }
+    case 'approval_resolved': {
+      state.approvals = state.approvals.filter(a => a.ID !== msg.id);
+      renderApprovals();
+      break;
+    }
+    case 'session_started': {
+      const s = state.sessions.find(s => s.ID === msg.sessionId);
+      if (s) {
+        s.Status = 'running';
+        if (msg.agentEphemeralPubKey) s.AgentEphemeralPubKey = msg.agentEphemeralPubKey;
+        renderSessions();
+      } else fetchAll();
+      // Proactively derive session key so live PTY frames can be decrypted immediately.
+      if (msg.agentEphemeralPubKey) {
+        getSessionKey(msg.sessionId, msg.agentEphemeralPubKey);
+      }
+      break;
+    }
+    case 'session_stopped': {
+      const s = state.sessions.find(s => s.ID === msg.sessionId);
+      if (s) { s.Status = 'stopped'; renderSessions(); }
+      // Update terminal badge if attached
+      if (state.attachedSession === msg.sessionId || $('term-modal').classList.contains('visible')) {
+        const sb = $('term-status');
+        if (sb.textContent !== 'stopped') {
+          sb.textContent = 'stopped'; sb.className = 'status-badge stopped';
+          state.attachedSession = null;
+          if (state.xterm) state.xterm.options.disableStdin = true;
+        }
+      }
+      break;
+    }
+    case 'session_tokens': {
+      state.sessionTokens[msg.sessionId] = {
+        inputTokens: msg.inputTokens,
+        contextWindowSize: msg.contextWindowSize,
+      };
+      renderSessions();
+      break;
+    }
+    case 'session_deleted': {
+      state.sessions = state.sessions.filter(s => s.ID !== msg.sessionId);
+      renderSessions();
+      break;
+    }
+    case 'host_deleted': {
+      state.hosts = state.hosts.filter(h => h.ID !== msg.hostId);
+      state.sessions = state.sessions.filter(s => s.HostID !== msg.hostId);
+      renderHosts();
+      renderSessions();
+      break;
+    }
+  }
+}
+
+// ── Approval actions ───────────────────────────────────────────────────────────
+
+async function resolve(id, decision) {
+  const card = document.querySelector(`[data-id="${id}"]`);
+  if (card) {
+    card.querySelectorAll('button').forEach(b => b.disabled = true);
+    card.style.opacity = '.5';
+  }
+  try {
+    await api('POST', `/api/approvals/${id}`, { decision });
+    state.approvals = state.approvals.filter(a => a.ID !== id);
+    renderApprovals();
+    toast(decision === 'approved' ? '✓ Allowed' : '✗ Denied');
+  } catch (err) {
+    if (card) {
+      card.querySelectorAll('button').forEach(b => b.disabled = false);
+      card.style.opacity = '1';
+    }
+    toast('Error: ' + err.message);
+  }
+}
+
+// ── Rendering ──────────────────────────────────────────────────────────────────
+
+function toggleApprovals() {
+  const sec = $('approvals-section');
+  const open = sec.classList.toggle('open');
+  $('approvals-toggle-label').textContent = open ? '▾ collapse' : '▸ expand';
+}
+
+function renderApprovals() {
+  const list  = $('approvals-list');
+  const count = $('approvals-count');
+  const badge = $('approval-badge');
+  const sec   = $('approvals-section');
+  const n = state.approvals.length;
+
+  count.textContent = n;
+  $('approval-badge-count').textContent = n;
+
+  if (n > 0) {
+    badge.style.display = '';
+    // Auto-expand when new approvals arrive
+    if (!sec.classList.contains('open')) sec.classList.add('open');
+    $('approvals-toggle-label').textContent = '▾ collapse';
+  } else {
+    badge.style.display = 'none';
+    sec.classList.remove('open');
+  }
+
+  if (n === 0) {
+    list.innerHTML = '';
+    return;
+  }
+
+  list.innerHTML = state.approvals.map(a => {
+    const risk = (a.RiskLevel || 'execute').toLowerCase();
+    let inputStr = a.ToolInput || '';
+    if (typeof inputStr === 'object') inputStr = JSON.stringify(inputStr, null, 2);
+    try {
+      const parsed = JSON.parse(inputStr);
+      inputStr = JSON.stringify(parsed, null, 2);
+    } catch {}
+    const preview = inputStr.length > 60 ? inputStr.slice(0, 60) + '…' : inputStr;
+
+    return `
+<div class="approval-card risk-${risk}" data-id="${a.ID}">
+  <div class="approval-header">
+    <span class="risk-badge ${risk}">${risk}</span>
+    <span class="tool-name">${esc(a.ToolName)}</span>
+  </div>
+  <div class="approval-meta">
+    <span>session: ${esc((a.SessionID||'').slice(0,12))}…</span>
+    &nbsp;·&nbsp;
+    <button class="tool-input-toggle" onclick="toggleInput(this)">▸ view input</button>
+    <div class="tool-input-body">${esc(inputStr)}</div>
+  </div>
+  <div class="approval-actions">
+    <button class="btn-allow" onclick="resolve('${a.ID}','approved')">✓ Allow</button>
+    <button class="btn-deny"  onclick="resolve('${a.ID}','rejected')">✗ Deny</button>
+  </div>
+</div>`;
+  }).join('');
+}
+
+function toggleInput(btn) {
+  const body = btn.nextElementSibling;
+  const open = body.classList.toggle('open');
+  btn.textContent = open ? '▾ hide input' : '▸ view input';
+}
+
+function renderHosts() {
+  const el = $('hosts-list');
+  const total = state.hosts.length + state.pendingDevices.length;
+  $('hosts-count').textContent = total;
+
+  if (!total) {
+    el.innerHTML = '<div class="empty-state">No hosts connected. Click <strong style="color:var(--text)">+ Add</strong> to get started.</div>';
+    return;
+  }
+
+  const pendingHtml = state.pendingDevices.map(d => `
+<div class="host-row">
+  <div class="host-row-top">
+    <div class="status-dot" style="background:var(--amber);animation:blink 1s infinite"></div>
+    <span class="host-name">${esc(d.hostname || 'unknown')}</span>
+    <span class="host-platform">${esc(d.platform || '?')}</span>
+    <button class="btn-authorize" onclick="authorizeDevice('${esc(d.user_code)}','${esc(d.hostname)}')">Authorize</button>
+  </div>
+  <div class="host-meta">waiting to connect · run <code>agentcockpit install</code> then click Authorize</div>
+</div>`).join('');
+
+  const hostHtml = state.hosts.map(h => {
+    const online = h.Status === 'online';
+    const lastSeen = h.LastSeenAt ? relTime(h.LastSeenAt) : '—';
+    return `
+<div class="host-row">
+  <div class="host-row-top">
+    <div class="status-dot ${online ? 'online' : 'offline'}"></div>
+    <span class="host-name">${esc(h.Name || h.Hostname || h.ID.slice(0,8))}</span>
+    <span class="host-platform">${esc(h.Platform || '?')}</span>
+    <button class="host-remove" onclick="removeHost('${esc(h.ID)}')" title="Remove host">&#x2715;</button>
+  </div>
+  <div class="host-meta">${esc(h.Hostname || '')}${h.Hostname ? ' · ' : ''}${online ? 'online' : 'last seen ' + lastSeen}</div>
+</div>`;
+  }).join('');
+
+  el.innerHTML = pendingHtml + hostHtml;
+}
+
+async function authorizeDevice(userCode, hostname) {
+  const res = await api('POST', '/api/device/authorize', { user_code: userCode, name: hostname });
+  if (!res || res.error) { alert('Authorization failed — the request may have expired.'); return; }
+  // Refresh both pending and hosts
+  const [hosts, pending] = await Promise.all([
+    api('GET', '/api/hosts'),
+    api('GET', '/api/device/pending'),
+  ]);
+  if (hosts   !== null) { state.hosts          = hosts   || []; }
+  if (pending !== null) { state.pendingDevices = pending || []; }
+  renderHosts();
+}
+
+async function removeHost(id) {
+  if (!confirm('Remove this host? The agent will stop connecting.')) return;
+  const res = await api('DELETE', `/api/hosts/${id}`);
+  if (res !== null && res?.error) { toast('Failed to remove host'); return; }
+  state.hosts = state.hosts.filter(h => h.ID !== id);
+  renderHosts();
+}
+
+function renderTokenBar(tok) {
+  const pct = tok ? Math.min(100, Math.round(tok.inputTokens / tok.contextWindowSize * 100)) : 0;
+  const fillClass = pct >= 90 ? 'crit' : pct >= 70 ? 'warn' : '';
+  const label = tok
+    ? `${fmtK(tok.inputTokens)} / ${fmtK(tok.contextWindowSize)} (${pct}%)`
+    : `0 / — (0%)`;
+  return `<div class="token-bar-wrap">
+  <div class="token-bar-track"><div class="token-bar-fill ${fillClass}" style="width:${pct}%"></div></div>
+  <span class="token-bar-label">${label}</span>
+</div>`;
+}
+
+function fmtK(n) {
+  return n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : String(n);
+}
+
+function renderSessions() {
+  const el = $('sessions-list');
+  const count = $('sessions-count');
+  count.textContent = state.sessions.length;
+
+  if (!state.sessions.length) {
+    el.innerHTML = '<div class="empty-state">No sessions yet.<br>Click <strong style="color:var(--text)">+ New</strong> to start one.</div>';
+    return;
+  }
+
+  const hostMap = {};
+  state.hosts.forEach(h => { hostMap[h.ID] = h.Name || h.Hostname || h.ID.slice(0,8); });
+
+  el.innerHTML = state.sessions.map(s => {
+    const name = s.Name || s.Command || 'session';
+    const hostName = hostMap[s.HostID] || (s.HostID || '').slice(0,8);
+    const dir = s.WorkingDir || '';
+    const shortDir = dir.replace(/^\/Users\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~');
+    const running = s.Status === 'running' || s.Status === 'awaiting_approval';
+    const started = s.StartedAt ? relTime(s.StartedAt) : s.CreatedAt ? relTime(s.CreatedAt) : '';
+
+    const actions = `<div class="session-actions">
+      ${running
+        ? `<button class="btn-session-action live" onclick="openTerminal('${esc(s.ID)}','${esc(name)}','${esc(s.Status)}',true)">attach</button>
+           <button class="btn-session-action danger" onclick="killSession('${esc(s.ID)}')">kill</button>`
+        : `<button class="btn-session-action" onclick="openTerminal('${esc(s.ID)}','${esc(name)}','${esc(s.Status)}',false)">replay</button>`
+      }
+      <button class="btn-session-action danger" onclick="deleteSession('${esc(s.ID)}')">delete</button>
+    </div>`;
+
+    const tok = state.sessionTokens[s.ID];
+    const tokenBar = renderTokenBar(tok);
+    return `
+<div class="session-row">
+  <div class="session-row-top">
+    <div class="status-dot ${running ? 'online' : 'offline'}"></div>
+    <span class="session-name">${esc(name)}</span>
+    <span class="status-badge ${s.Status}">${s.Status}</span>
+    <span class="session-time">${esc(started)}</span>
+    ${actions}
+  </div>
+  <div class="session-meta">${esc(s.Command || s.AgentType || '')} · ${esc(hostName)} · ${esc(shortDir)}</div>
+  ${tokenBar}
+</div>`;
+  }).join('');
+}
+
+async function killSession(id) {
+  if (!confirm('Kill this session?')) return;
+  await api('DELETE', `/api/sessions/${id}`);
+  const s = state.sessions.find(s => s.ID === id);
+  if (s) { s.Status = 'stopped'; renderSessions(); }
+}
+
+async function deleteSession(id) {
+  if (!confirm('Delete this session? This cannot be undone.')) return;
+  await api('DELETE', `/api/sessions/${id}/delete`);
+  state.sessions = state.sessions.filter(s => s.ID !== id);
+  renderSessions();
+}
+
+// ── Utilities ──────────────────────────────────────────────────────────────────
+
+// ── Add Host Modal ─────────────────────────────────────────────────────────────
+
+let _modalPollTimer = null;
+
+async function openAddHostModal() {
+  $('add-host-modal').classList.add('visible');
+  $('modal-body').innerHTML = '<div class="modal-step"><div class="modal-step-label" style="color:var(--dim)">Generating secure invite...</div></div>';
+
+  try {
+    const res = await fetch('/api/hosts/invite', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${state.token}` },
+    });
+    if (!res.ok) throw new Error('invite failed');
+    const { token } = await res.json();
+    const cmd = `curl -fsSL https://agentcockpit.sh | sh && agentcockpit install --invite ${token}`;
+    const hostCountBefore = state.hosts.length;
+
+    $('modal-body').innerHTML = `
+<div class="modal-step">
+  <div class="modal-step-label">Run this command on your machine</div>
+  <div class="setup-cmd" style="flex-direction:column;gap:6px;align-items:stretch;">
+    <code style="word-break:break-all;line-height:1.7">${esc(cmd)}</code>
+    <button class="copy-btn" style="align-self:flex-end;" data-cmd="${esc(cmd)}" onclick="copyCmd(this,this.dataset.cmd)">copy</button>
+  </div>
+  <p style="font-size:11px;color:var(--dim);line-height:1.6;">
+    Installs the agent and connects this machine automatically.<br>
+    Invite expires in <strong style="color:var(--text)">15 minutes</strong>.
+  </p>
+</div>
+<hr class="modal-divider">
+<div id="modal-waiting" style="text-align:center;font-size:11px;color:var(--dim);padding:4px 0;">
+  <span style="animation:blink 1.2s infinite;display:inline-block">&#9679;</span>&nbsp; Waiting for host to connect...
+</div>`;
+
+    // Poll until a new host appears
+    _modalPollTimer = setInterval(async () => {
+      const hosts = await api('GET', '/api/hosts');
+      if (hosts && hosts.length > hostCountBefore) {
+        clearInterval(_modalPollTimer);
+        const newHost = hosts.find(h => !state.hosts.find(old => old.ID === h.ID));
+        state.hosts = hosts;
+        renderHosts();
+        $('modal-body').innerHTML = `
+<div class="modal-success">
+  <div class="modal-success-icon">&#x2713;</div>
+  <div class="modal-success-text">${esc(newHost ? (newHost.Name || newHost.Hostname) : 'Host')} connected</div>
+  <div class="modal-success-sub">Daemon setup complete. Use <code style="color:var(--green)">agentcockpit status</code> to verify it is online.</div>
+</div>`;
+        setTimeout(closeAddHostModal, 3000);
+      }
+    }, 3000);
+  } catch {
+    $('modal-body').innerHTML = '<div class="modal-step"><div class="modal-step-label" style="color:var(--red)">Failed to generate invite. Please try again.</div></div>';
+  }
+}
+
+function closeAddHostModal() {
+  clearInterval(_modalPollTimer);
+  $('add-host-modal').classList.remove('visible');
+}
+
+$('add-host-btn').addEventListener('click', openAddHostModal);
+$('modal-close-btn').addEventListener('click', closeAddHostModal);
+$('add-host-modal').addEventListener('click', e => { if (e.target === $('add-host-modal')) closeAddHostModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAddHostModal(); });
+
+function copyCmd(btn, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'copied!';
+    btn.style.color = 'var(--green)';
+    setTimeout(() => { btn.textContent = orig; btn.style.color = ''; }, 1500);
+  });
+}
+
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+function relTime(iso) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60)  return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s/60)}m ago`;
+  return `${Math.floor(s/3600)}h ago`;
+}
+
+function toast(msg) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  $('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+}
+
+// ── Terminal state & functions ─────────────────────────────────────────────────
+
+Object.assign(state, { attachedSession: null, xterm: null, fitAddon: null });
+
+async function openTerminal(sessionId, name, status, live) {
+  if (state.xterm) { state.xterm.dispose(); state.xterm = null; state.fitAddon = null; }
+  state.attachedSession = live ? sessionId : null;
+
+  // Ensure the session key is derived before we start receiving/replaying data.
+  // Look up the ephemeral pubkey from the cached session list.
+  const sessObj = state.sessions.find(s => s.ID === sessionId);
+  if (sessObj?.AgentEphemeralPubKey) {
+    await getSessionKey(sessionId, sessObj.AgentEphemeralPubKey);
+  }
+
+  $('term-title').textContent = name || sessionId.slice(0, 12);
+  const sb = $('term-status');
+  sb.textContent = status;
+  sb.className = `status-badge ${status}`;
+
+  const term = new Terminal({
+    cursorBlink: true,
+    fontSize: 13,
+    fontFamily: '"MesloLGS NF","FiraCode Nerd Font Mono","JetBrainsMono Nerd Font Mono","Symbols Nerd Font Mono","Source Code Pro","SF Mono","Fira Code","Cascadia Code",Menlo,monospace',
+    theme: { background: '#0d0d0d', foreground: '#d4d4d4', cursor: '#00d67c' },
+    scrollback: 5000,
+    convertEol: false,
+    disableStdin: !live,
+  });
+  const fitAddon = new FitAddon.FitAddon();
+  term.loadAddon(fitAddon);
+
+  const container = $('xterm-container');
+  container.innerHTML = '';
+  term.open(container);
+
+  state.xterm = term;
+  state.fitAddon = fitAddon;
+
+  if (live) {
+    // Keyboard input → PTY stdin (encrypted when E2E session key is available)
+    term.onData(async data => {
+      if (!state.ws || state.wsState !== 'connected' || !state.attachedSession) return;
+      const sid = state.attachedSession;
+      const bytes = new TextEncoder().encode(data);
+      const key = SESSION_KEY_CACHE.get(sid);
+      const payload = key ? await encryptStdin(key, bytes, sid) : bytes;
+      const b64 = btoa(Array.from(payload, b => String.fromCharCode(b)).join(''));
+      state.ws.send(JSON.stringify({ type: 'stdin_data', sessionId: sid, data: b64 }));
+    });
+    // Notify agent of terminal dimensions on resize
+    term.onResize(({ cols, rows }) => {
+      if (!state.ws || state.wsState !== 'connected' || !state.attachedSession) return;
+      state.ws.send(JSON.stringify({ type: 'session_resize', sessionId: state.attachedSession, cols, rows }));
+    });
+  }
+
+  $('term-modal').classList.add('visible');
+  // Double rAF: first frame resolves display:flex layout, second measures stable dimensions
+  requestAnimationFrame(() => requestAnimationFrame(() => { fitAddon.fit(); if (live) term.focus(); }));
+
+  // Replay stored scrollback (decrypt if E2E is active)
+  try {
+    const events = await api('GET', `/api/sessions/${sessionId}/events`);
+    if (events && state.xterm) {
+      const key = SESSION_KEY_CACHE.get(sessionId);
+      for (const ev of events) {
+        if (ev.Type === 'output' && ev.Data) {
+          const raw = Uint8Array.from(atob(ev.Data), c => c.charCodeAt(0));
+          if (key) {
+            const plain = await decryptChunk(key, raw, sessionId);
+            if (plain && state.xterm) state.xterm.write(plain);
+          } else {
+            if (state.xterm) state.xterm.write(raw);
+          }
+        }
+      }
+    }
+  } catch {}
+}
+
+function detachSession() {
+  state.attachedSession = null;
+  if (state.xterm) { state.xterm.dispose(); state.xterm = null; state.fitAddon = null; }
+  $('term-modal').classList.remove('visible');
+}
+
+// Called by the WS handler when a binary PTY frame arrives.
+function termWrite(data) {
+  if (state.xterm) state.xterm.write(data);
+}
+
+// ── New Session Modal ──────────────────────────────────────────────────────────
+
+function openNewSessionModal() {
+  const onlineHosts = state.hosts.filter(h => h.Status === 'online');
+  const sel = $('ns-host');
+  sel.innerHTML = onlineHosts.length
+    ? onlineHosts.map(h => `<option value="${esc(h.ID)}">${esc(h.Name || h.Hostname || h.ID.slice(0,8))}</option>`).join('')
+    : '<option value="">No hosts online</option>';
+  $('ns-error').textContent = '';
+  $('new-session-modal').classList.add('visible');
+}
+
+function closeNewSessionModal() {
+  $('new-session-modal').classList.remove('visible');
+}
+
+$('new-session-btn').addEventListener('click', openNewSessionModal);
+$('ns-close-btn').addEventListener('click', closeNewSessionModal);
+$('new-session-modal').addEventListener('click', e => { if (e.target === $('new-session-modal')) closeNewSessionModal(); });
+
+$('ns-start-btn').addEventListener('click', async () => {
+  const hostId = $('ns-host').value;
+  const errEl  = $('ns-error');
+  errEl.textContent = '';
+
+  if (!hostId) { errEl.textContent = 'Select a host.'; return; }
+
+  const btn = $('ns-start-btn');
+  btn.disabled = true; btn.textContent = 'Starting…';
+  try {
+    const sess = await api('POST', '/api/sessions', { host_id: hostId });
+    if (sess && sess.ID) {
+      state.sessions.unshift(sess);
+      renderSessions();
+      closeNewSessionModal();
+      setTimeout(() => openTerminal(sess.ID, sess.Name || 'shell', 'starting', true), 600);
+    }
+  } catch (err) {
+    errEl.textContent = err.message || 'Failed to start session.';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Start shell';
+  }
+});
+
+// ── Terminal event listeners ───────────────────────────────────────────────────
+
+$('term-close-btn').addEventListener('click', detachSession);
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && $('new-session-modal').classList.contains('visible')) closeNewSessionModal();
+});
+window.addEventListener('resize', () => { if (state.fitAddon) state.fitAddon.fit(); });
+
+// ── E2E Encryption (WebCrypto) ─────────────────────────────────────────────────
+//
+// Scheme: ECDH P-256 key agreement → HKDF-SHA-256 → AES-256-GCM per message.
+// ── E2E Encryption ─────────────────────────────────────────────────────────────
+// Zero-knowledge relay: the server stores only ciphertext and public keys.
+// Private key is wrapped with a PBKDF2-derived key from the user's password,
+// allowing any browser to reconstruct the keypair after login.
+
+const E2E_DB_NAME = 'agentcockpit-crypto';
+const E2E_DB_VERSION = 1;
+const E2E_STORE_NAME = 'keys';
+const E2E_KEY_ID = 'userKeypair';
+const SESSION_KEY_CACHE = new Map(); // sessionId → CryptoKey
+
+function openCryptoDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(E2E_DB_NAME, E2E_DB_VERSION);
+    req.onupgradeneeded = e => e.target.result.createObjectStore(E2E_STORE_NAME);
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror = e => reject(e.target.error);
+  });
+}
+
+function idbGet(db, key) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(E2E_STORE_NAME, 'readonly');
+    const req = tx.objectStore(E2E_STORE_NAME).get(key);
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror = e => reject(e.target.error);
+  });
+}
+
+function idbPut(db, key, value) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(E2E_STORE_NAME, 'readwrite');
+    const req = tx.objectStore(E2E_STORE_NAME).put(value, key);
+    req.onsuccess = () => resolve();
+    req.onerror = e => reject(e.target.error);
+  });
+}
+
+// Derive an AES-256-GCM wrapping key from a password + salt using PBKDF2-SHA-256.
+async function deriveWrappingKey(password, saltBytes) {
+  const baseKey = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', hash: 'SHA-256', salt: saltBytes, iterations: 600000 },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+// Encrypt a PKCS#8 private key with a wrapping key → base64 [IV][ciphertext].
+async function encryptPrivateKey(wrappingKey, privateKey) {
+  const pkcs8 = await crypto.subtle.exportKey('pkcs8', privateKey);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, wrappingKey, pkcs8);
+  const out = new Uint8Array(12 + ct.byteLength);
+  out.set(iv);
+  out.set(new Uint8Array(ct), 12);
+  return btoa(String.fromCharCode(...out));
+}
+
+// Decrypt a wrapped PKCS#8 private key → CryptoKey.
+async function decryptPrivateKey(wrappingKey, encB64) {
+  const blob = Uint8Array.from(atob(encB64), c => c.charCodeAt(0));
+  const pkcs8 = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: blob.slice(0, 12) }, wrappingKey, blob.slice(12)
+  );
+  return crypto.subtle.importKey(
+    'pkcs8', pkcs8, { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey', 'deriveBits']
+  );
+}
+
+// Ensure the user has a P-256 ECDH keypair available.
+//
+// Flow A — IndexedDB hit (common case, any browser after first login):
+//   Return cached keypair immediately.
+//
+// Flow B — New browser, server has wrapped key (password required):
+//   Derive wrapping key from password → decrypt private key → re-import public key from server
+//   → store in IndexedDB.
+//
+// Flow C — First ever login (no key anywhere):
+//   Generate new keypair → wrap private key with password → upload public key + wrapped blob
+//   → store in IndexedDB.
+//
+// Flow D — Page reload with saved token, no password available:
+//   Falls back to IndexedDB only; if not found, E2E runs without a key (graceful degradation).
+//   User re-logs in to restore the key on this browser.
+async function ensureUserKeypair(password, userData) {
+  try {
+    const db = await openCryptoDB();
+    const stored = await idbGet(db, E2E_KEY_ID);
+    if (stored) return stored;
+
+    let kp;
+
+    if (password && userData?.e2eEncryptedPrivKey && userData?.e2ePbkdf2Salt) {
+      // Flow B: unwrap existing key from server using the login password.
+      const saltBytes = Uint8Array.from(atob(userData.e2ePbkdf2Salt), c => c.charCodeAt(0));
+      const wrappingKey = await deriveWrappingKey(password, saltBytes);
+      const privateKey = await decryptPrivateKey(wrappingKey, userData.e2eEncryptedPrivKey);
+      // Re-import the public key (stored unencrypted on server).
+      const spkiBytes = Uint8Array.from(atob(userData.e2ePublicKey), c => c.charCodeAt(0));
+      const publicKey = await crypto.subtle.importKey(
+        'spki', spkiBytes, { name: 'ECDH', namedCurve: 'P-256' }, true, []
+      );
+      kp = { privateKey, publicKey };
+    } else {
+      // Flow C: generate a brand-new keypair.
+      kp = await crypto.subtle.generateKey(
+        { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey', 'deriveBits']
+      );
+      const spkiBytes = await crypto.subtle.exportKey('spki', kp.publicKey);
+      const spkiB64 = btoa(String.fromCharCode(...new Uint8Array(spkiBytes)));
+
+      if (password) {
+        // Wrap the private key and upload all material together.
+        const saltBytes = crypto.getRandomValues(new Uint8Array(16));
+        const saltB64 = btoa(String.fromCharCode(...saltBytes));
+        const wrappingKey = await deriveWrappingKey(password, saltBytes);
+        const encPrivKey = await encryptPrivateKey(wrappingKey, kp.privateKey);
+        await api('PUT', '/api/me/e2e-pubkey', {
+          publicKey: spkiB64, encryptedPrivKey: encPrivKey, pbkdf2Salt: saltB64,
+        });
+      } else {
+        // Flow D: no password — upload public key only (no wrapping possible).
+        await api('PUT', '/api/me/e2e-pubkey', { publicKey: spkiB64, encryptedPrivKey: '', pbkdf2Salt: '' });
+      }
+    }
+
+    await idbPut(db, E2E_KEY_ID, kp);
+    return kp;
+  } catch (err) {
+    console.warn('E2E: key setup failed', err);
+    return null;
+  }
+}
+
+// Derive (and cache) the AES-256-GCM session key for a given session.
+// agentEphemeralPubKeyB64 is the base64-encoded SPKI of the agent's ephemeral key.
+async function getSessionKey(sessionId, agentEphemeralPubKeyB64) {
+  if (SESSION_KEY_CACHE.has(sessionId)) return SESSION_KEY_CACHE.get(sessionId);
+  if (!agentEphemeralPubKeyB64) return null;
+
+  const kp = await ensureUserKeypair(null, null);
+  if (!kp) return null;
+
+  try {
+    // Import agent's ephemeral public key (SPKI base64 → CryptoKey).
+    const spkiBytes = Uint8Array.from(atob(agentEphemeralPubKeyB64), c => c.charCodeAt(0));
+    const agentPub = await crypto.subtle.importKey(
+      'spki', spkiBytes,
+      { name: 'ECDH', namedCurve: 'P-256' },
+      false, []
+    );
+
+    // ECDH → raw shared secret bits.
+    const sharedBits = await crypto.subtle.deriveBits(
+      { name: 'ECDH', public: agentPub },
+      kp.privateKey,
+      256
+    );
+
+    // HKDF-SHA-256 → 256-bit AES-GCM key.
+    const hkdfKey = await crypto.subtle.importKey('raw', sharedBits, 'HKDF', false, ['deriveKey']);
+    const sessionKey = await crypto.subtle.deriveKey(
+      {
+        name: 'HKDF',
+        hash: 'SHA-256',
+        salt: new TextEncoder().encode(sessionId),
+        info: new TextEncoder().encode('agentcockpit-session-v1'),
+      },
+      hkdfKey,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+    SESSION_KEY_CACHE.set(sessionId, sessionKey);
+    return sessionKey;
+  } catch (err) {
+    console.warn('E2E: session key derivation failed', err);
+    return null;
+  }
+}
+
+// Decrypt a PTY chunk: [12-byte IV][AES-GCM ciphertext+tag] → Uint8Array plaintext.
+async function decryptChunk(sessionKey, encBytes, sessionId) {
+  if (!sessionKey) return encBytes; // fallback: pass through if no key
+  try {
+    const iv = encBytes.slice(0, 12);
+    const ciphertext = encBytes.slice(12);
+    const plaintext = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(sessionId) },
+      sessionKey,
+      ciphertext
+    );
+    return new Uint8Array(plaintext);
+  } catch {
+    return null; // decryption failed — drop
+  }
+}
+
+// Encrypt stdin bytes: Uint8Array → [12-byte IV][AES-GCM ciphertext+tag].
+async function encryptStdin(sessionKey, plainBytes, sessionId) {
+  if (!sessionKey) return plainBytes;
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(sessionId) },
+    sessionKey,
+    plainBytes
+  );
+  const out = new Uint8Array(12 + ciphertext.byteLength);
+  out.set(iv);
+  out.set(new Uint8Array(ciphertext), 12);
+  return out;
+}
+
+// Decrypt an approval request encrypted payload.
+// Returns { toolName, toolInput, riskLevel } or null on failure.
+async function decryptApprovalPayload(sessionId, encB64, requestId) {
+  if (!encB64) return null;
+  const sessionKey = SESSION_KEY_CACHE.get(sessionId);
+  if (!sessionKey) return null;
+  try {
+    const blob = Uint8Array.from(atob(encB64), c => c.charCodeAt(0));
+    const iv = blob.slice(0, 12);
+    const ciphertext = blob.slice(12);
+    const plaintext = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(requestId) },
+      sessionKey,
+      ciphertext
+    );
+    return JSON.parse(new TextDecoder().decode(plaintext));
+  } catch {
+    return null;
+  }
+}
+
+// Called once after successful auth to boot E2E crypto.
+// password and userData are available during login/register; absent on page reload.
+async function initE2E(password, userData) {
+  await ensureUserKeypair(password, userData);
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+
+if (state.token) {
+  showApp();
+} else {
+  setAuthMode('login');
+  showHome();
+}
+</script>
 </body>
 </html>

@@ -293,6 +293,27 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, safeUser(currentUser(r)))
 }
 
+// handleSetE2EPublicKey stores the user's long-term ECDH P-256 public key and
+// (optionally) the password-wrapped private key for multi-browser support.
+// Called by the browser after generating or unwrapping the keypair; idempotent.
+func (s *Server) handleSetE2EPublicKey(w http.ResponseWriter, r *http.Request) {
+	user := currentUser(r)
+	var body struct {
+		PublicKey       string `json:"publicKey"`
+		EncryptedPrivKey string `json:"encryptedPrivKey"`
+		Pbkdf2Salt      string `json:"pbkdf2Salt"`
+	}
+	if err := decodeJSON(r, &body); err != nil || body.PublicKey == "" {
+		writeError(w, http.StatusBadRequest, "publicKey required")
+		return
+	}
+	if err := s.store.UpdateUserE2EKeys(r.Context(), user.ID, body.PublicKey, body.EncryptedPrivKey, body.Pbkdf2Salt); err != nil {
+		writeError(w, http.StatusInternalServerError, "db error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 func (s *Server) issueAuthToken(ctx context.Context, userID string, r *http.Request) (string, *store.AuthToken, error) {
@@ -312,11 +333,14 @@ func (s *Server) issueAuthToken(ctx context.Context, userID string, r *http.Requ
 
 func safeUser(u *store.User) map[string]any {
 	return map[string]any{
-		"id":         u.ID,
-		"email":      u.Email,
-		"name":       u.Name,
-		"role":       u.Role,
-		"created_at": u.CreatedAt,
+		"id":                u.ID,
+		"email":             u.Email,
+		"name":              u.Name,
+		"role":              u.Role,
+		"e2ePublicKey":      u.E2EPublicKey,        // empty if not yet set
+		"e2eEncryptedPrivKey": u.E2EEncryptedPrivKey, // password-wrapped PKCS#8; empty if not set
+		"e2ePbkdf2Salt":    u.E2EPbkdf2Salt,         // PBKDF2 salt; empty if not set
+		"created_at":        u.CreatedAt,
 	}
 }
 

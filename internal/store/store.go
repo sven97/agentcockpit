@@ -12,6 +12,7 @@ type Store interface {
 	GetUserByEmail(ctx context.Context, email string) (*User, error)
 	GetUserByID(ctx context.Context, id string) (*User, error)
 	GetUserByGitHubID(ctx context.Context, githubID string) (*User, error)
+	UpdateUserE2EKeys(ctx context.Context, userID, spkiBase64url, encryptedPrivKey, pbkdf2Salt string) error
 
 	// Auth tokens (browser sessions)
 	CreateAuthToken(ctx context.Context, t *AuthToken) error
@@ -44,6 +45,7 @@ type Store interface {
 	StopSession(ctx context.Context, id string, exitCode int) error
 	DeleteSession(ctx context.Context, id string) error
 	DeleteSessionsByHost(ctx context.Context, hostID string) error
+	SetSessionEphemeralPubKey(ctx context.Context, sessionID, spkiBase64url string) error
 
 	// Session events (append-only)
 	AppendSessionEvent(ctx context.Context, e *SessionEvent) error

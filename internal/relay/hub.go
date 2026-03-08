@@ -326,8 +326,11 @@ func (h *Hub) routeHostMessage(hc *HostConn, data []byte) {
 		if err := json.Unmarshal(data, &msg); err != nil {
 			return
 		}
-		// Update DB status.
+		// Update DB status and persist the agent's ephemeral public key for replay.
 		h.store.UpdateSessionStatus(context.Background(), msg.SessionID, "running")
+		if msg.AgentEphemeralPubKey != "" {
+			h.store.SetSessionEphemeralPubKey(context.Background(), msg.SessionID, msg.AgentEphemeralPubKey)
+		}
 		h.broadcastToUserBrowsersByUserID(hc.UserID, data)
 
 	case protocol.TypeSessionStopped:

@@ -100,6 +100,7 @@ func (s *Server) routes() {
 
 	// ── User API ───────────────────────────────────────────────────────────
 	s.mux.HandleFunc("GET /api/me", s.requireAuth(s.handleMe))
+	s.mux.HandleFunc("PUT /api/me/e2e-pubkey", s.requireAuth(s.handleSetE2EPublicKey))
 
 	// ── Hosts API ──────────────────────────────────────────────────────────
 	s.mux.HandleFunc("GET /api/hosts", s.requireAuth(s.handleListHosts))

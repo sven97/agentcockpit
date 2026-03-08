@@ -205,12 +205,14 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Tell the host agent to spawn the session.
+	// Include the user's E2E public key so the agent can derive the session key.
 	s.hub.SendToHost(body.HostID, protocol.SessionCreate{
-		Type:      protocol.TypeSessionCreate,
-		SessionID: sess.ID,
-		AgentType: body.AgentType,
-		CWD:       body.WorkingDir,
-		Command:   command,
+		Type:          protocol.TypeSessionCreate,
+		SessionID:     sess.ID,
+		AgentType:     body.AgentType,
+		CWD:           body.WorkingDir,
+		Command:       command,
+		UserE2EPubKey: user.E2EPublicKey, // empty string if user hasn't registered a key yet
 	})
 
 	writeJSON(w, http.StatusCreated, sess)
