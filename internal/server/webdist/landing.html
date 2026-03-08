@@ -3,238 +3,338 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AgentCockpit</title>
-<link rel="stylesheet" href="/app.css">
+<title>AgentCockpit — Control your AI agents, from anywhere</title>
+<meta name="description" content="A relay server for Claude Code, Codex CLI, and OpenCode. Approve risky tool calls from any browser, watch live terminal sessions, and keep final control over what your agents do.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500&display=swap">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
-<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
+<link rel="stylesheet" href="/landing.css">
 </head>
 <body>
 
-<!-- Home -->
-<div id="home">
-  <div class="home-shell">
-    <div class="home-top">
-      <div class="home-wordmark">AgentCockpit.app</div>
-      <h1 class="home-headline">Control Claude Code, Codex CLI, and OpenCode from one dashboard.</h1>
-      <p class="home-sub">
-        AgentCockpit is a zero-knowledge relay for AI coding sessions. You can move fast with autonomous agents while keeping final control of sensitive actions.
+<!-- ── Nav ── -->
+<nav>
+  <div class="nav-inner">
+    <div class="nav-wordmark">Agent<span>Cockpit</span></div>
+    <div class="nav-right">
+      <a href="#features" class="nav-link">Features</a>
+      <a href="#how-it-works" class="nav-link">How it works</a>
+      <a href="#security" class="nav-link">Security</a>
+      <a href="/login" class="btn-nav">Sign in</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ── Hero ── -->
+<section class="hero">
+  <div class="hero-inner">
+    <div class="eyebrow">
+      <span class="eyebrow-dot"></span>
+      AI agent control plane
+    </div>
+    <h1>Control your AI agents.<br><em>From anywhere.</em></h1>
+    <p class="hero-sub">
+      A relay server for Claude Code, Codex CLI, and OpenCode. Approve sensitive tool calls
+      from any browser, watch live terminal sessions, and keep final say over what your agents do.
+    </p>
+    <div class="hero-ctas">
+      <a href="/dashboard" class="btn-primary lg">Open dashboard</a>
+      <a href="/login" class="btn-ghost-lg">Sign in</a>
+    </div>
+    <div class="hero-proof">
+      <span>Zero-knowledge relay</span>
+      <span class="dot">·</span>
+      <span>End-to-end encrypted</span>
+      <span class="dot">·</span>
+      <span>Works with existing tools</span>
+      <span class="dot">·</span>
+      <span>Self-hostable</span>
+    </div>
+  </div>
+</section>
+
+<!-- ── Hero screenshot ── -->
+<section class="hero-screenshot">
+  <div class="screenshot-frame">
+    <div class="screenshot-bar">
+      <span class="traffic-dot red"></span>
+      <span class="traffic-dot yellow"></span>
+      <span class="traffic-dot green"></span>
+    </div>
+    <div class="screenshot-body">
+      <span class="placeholder-text">Dashboard screenshot — coming soon</span>
+    </div>
+  </div>
+</section>
+
+<hr class="section-divider">
+
+<!-- ── Features ── -->
+<section class="features" id="features">
+  <div class="features-header container">
+    <div class="section-label">Features</div>
+    <h2>Everything you need to run agents with confidence.</h2>
+    <p>Built for solo developers who want AI speed without giving up control.</p>
+  </div>
+
+  <div class="feature-rows container">
+
+    <!-- Approval flow -->
+    <div class="feature-row">
+      <div class="feature-text">
+        <div class="section-label">Approval flow</div>
+        <h3>Review before your agent acts.</h3>
+        <p>
+          Every sensitive tool call — shell commands, file writes, web requests — surfaces as an
+          approval card in your browser. One click to allow or deny. The agent waits.
+        </p>
+        <div class="feature-detail">
+          <div class="feature-detail-item">
+            <span class="check">✓</span>
+            Risk classification — read, write, execute, destructive
+          </div>
+          <div class="feature-detail-item">
+            <span class="check">✓</span>
+            Full tool input visible before you decide
+          </div>
+          <div class="feature-detail-item">
+            <span class="check">✓</span>
+            Approve from phone, tablet, or any browser
+          </div>
+        </div>
+      </div>
+      <div class="feature-visual">
+        <div class="feature-visual-bar">
+          <span class="traffic-dot red"></span>
+          <span class="traffic-dot yellow"></span>
+          <span class="traffic-dot green"></span>
+        </div>
+        <div class="feature-visual-body">
+          <span class="placeholder-text">Approval card screenshot</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live terminals -->
+    <div class="feature-row flip">
+      <div class="feature-text">
+        <div class="section-label">Live terminals</div>
+        <h3>Watch the work happen, in real time.</h3>
+        <p>
+          Every session streams live PTY output to your browser over an encrypted WebSocket.
+          See exactly what your agent is doing — from any machine, at any time.
+        </p>
+        <div class="feature-detail">
+          <div class="feature-detail-item">
+            <span class="check">✓</span>
+            Full xterm.js terminal rendered in the browser
+          </div>
+          <div class="feature-detail-item">
+            <span class="check">✓</span>
+            ANSI colors and escape sequences preserved
+          </div>
+          <div class="feature-detail-item">
+            <span class="check">✓</span>
+            Stream replays from session start on reconnect
+          </div>
+        </div>
+      </div>
+      <div class="feature-visual">
+        <div class="feature-visual-bar">
+          <span class="traffic-dot red"></span>
+          <span class="traffic-dot yellow"></span>
+          <span class="traffic-dot green"></span>
+        </div>
+        <div class="feature-visual-body">
+          <span class="placeholder-text">Terminal session screenshot</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Multi-host -->
+    <div class="feature-row">
+      <div class="feature-text">
+        <div class="section-label">Multi-host</div>
+        <h3>All your machines, one dashboard.</h3>
+        <p>
+          Connect your laptop, home server, or cloud VM. All agents check in to the same relay.
+          Switch between hosts instantly — no SSH, no VPN.
+        </p>
+        <div class="feature-detail">
+          <div class="feature-detail-item">
+            <span class="check">✓</span>
+            One-command install on any Linux or macOS host
+          </div>
+          <div class="feature-detail-item">
+            <span class="check">✓</span>
+            Daemon auto-reconnects on network interruptions
+          </div>
+          <div class="feature-detail-item">
+            <span class="check">✓</span>
+            Live presence indicator — online / offline per host
+          </div>
+        </div>
+      </div>
+      <div class="feature-visual">
+        <div class="feature-visual-bar">
+          <span class="traffic-dot red"></span>
+          <span class="traffic-dot yellow"></span>
+          <span class="traffic-dot green"></span>
+        </div>
+        <div class="feature-visual-body">
+          <span class="placeholder-text">Hosts list screenshot</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<hr class="section-divider">
+
+<!-- ── How it works ── -->
+<section class="how-it-works" id="how-it-works">
+  <div class="how-inner container">
+    <div class="section-label">How it works</div>
+    <h2 class="section-headline">Three components. One secure loop.</h2>
+    <p class="section-sub">
+      No polling, no SSH tunnels. An outbound WebSocket from each host carries everything.
+    </p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">01</div>
+        <h3>Hook shim intercepts each tool call</h3>
+        <p>
+          Claude Code, Codex CLI, or OpenCode calls the <code>agentcockpit hook</code> shim
+          before every tool use. The shim connects to the local daemon via Unix socket and blocks,
+          waiting for a decision. Fails open if the daemon isn't running.
+        </p>
+      </div>
+      <div class="step">
+        <div class="step-num">02</div>
+        <h3>Relay delivers it to your browser</h3>
+        <p>
+          The daemon forwards the approval request over an outbound WebSocket to the relay server.
+          The relay persists it and fans it out live to every browser tab you have open — no polling required.
+        </p>
+      </div>
+      <div class="step">
+        <div class="step-num">03</div>
+        <h3>You decide. The agent continues.</h3>
+        <p>
+          Allow or deny in one click. The decision flows back through the relay to the daemon,
+          which unblocks the shim in milliseconds. The agent continues — or stops — based on your call.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="section-divider">
+
+<!-- ── Security ── -->
+<section class="security" id="security">
+  <div class="security-inner container">
+    <div class="security-text">
+      <div class="section-label">Security</div>
+      <h2>The relay routes. It cannot read.</h2>
+      <p>
+        Tool payloads and terminal output are end-to-end encrypted between your agent daemon and
+        your browser. The relay server sees only routing metadata — never your actual content.
       </p>
-      <div class="home-ctas">
-        <button class="btn-home primary" id="home-open-dashboard">Open dashboard</button>
-        <button class="btn-home" id="home-sign-in">Sign in</button>
-        <button class="btn-home" id="home-register">Create account</button>
-      </div>
-      <div class="home-proof">
-        <span class="proof-chip">Zero-knowledge relaying</span>
-        <span class="proof-chip">Fast approval loop</span>
-        <span class="proof-chip">Works with your current tools</span>
-      </div>
-      <div class="home-pillars">
-        <div class="pillar-card">
-          <h3>What It Is</h3>
-          <p>A control plane for AI coding sessions across your machines.</p>
+      <div class="security-points">
+        <div class="security-point">
+          <span class="check">✓</span>
+          Private key never leaves your browser — derived from your password with PBKDF2
         </div>
-        <div class="pillar-card">
-          <h3>Why It Is Secure</h3>
-          <p>Session data is end-to-end encrypted. The relay routes traffic but cannot read payloads.</p>
+        <div class="security-point">
+          <span class="check">✓</span>
+          Auth tokens stored as SHA-256 hashes — raw tokens never persisted
         </div>
-        <div class="pillar-card">
-          <h3>Why It Is Fast</h3>
-          <p>Approvals, sessions, and terminal activity stream live in one place.</p>
+        <div class="security-point">
+          <span class="check">✓</span>
+          WebSocket connections use TLS in transit
+        </div>
+        <div class="security-point">
+          <span class="check">✓</span>
+          Open source — audit the relay and the hook shim yourself
         </div>
       </div>
     </div>
-    <div class="home-main">
-      <div class="usecase-list">
-        <button class="usecase-btn active" data-usecase="solo">
-          <strong>Night coding session</strong>
-          <span>Keep coding while approvals stay explicit</span>
-        </button>
-        <button class="usecase-btn" data-usecase="team">
-          <strong>Remote workstation</strong>
-          <span>Approve from laptop or phone away from desk</span>
-        </button>
-        <button class="usecase-btn" data-usecase="consulting">
-          <strong>Freelance delivery</strong>
-          <span>Show exactly what agent actions were allowed</span>
-        </button>
+
+    <div class="security-table">
+      <div class="security-row">
+        <div class="security-row-label">Key exchange</div>
+        <div class="security-row-value">ECDH P-256 + HKDF-SHA-256</div>
       </div>
-      <div class="usecase-stage">
-        <div class="usecase-kicker">Use Case Walkthrough</div>
-        <h2 class="usecase-title" id="usecase-title"></h2>
-        <p class="usecase-summary" id="usecase-summary"></p>
-        <div class="timeline" id="usecase-timeline"></div>
-        <div class="usecase-outcome" id="usecase-outcome"></div>
+      <div class="security-row">
+        <div class="security-row-label">Payload encryption</div>
+        <div class="security-row-value">AES-256-GCM</div>
       </div>
-    </div>
-    <div class="home-cred">
-      <div class="cred-card">
-        <div class="usecase-kicker">How It Works</div>
-        <div class="cred-list">
-          <div><b>1.</b> Agent sends approval requests and PTY output through AgentCockpit.</div>
-          <div><b>2.</b> You review and approve or deny in the browser dashboard.</div>
-          <div><b>3.</b> Session continues instantly with your decision.</div>
-        </div>
+      <div class="security-row">
+        <div class="security-row-label">Key wrapping</div>
+        <div class="security-row-value">PBKDF2-SHA-256 · 600k iterations</div>
       </div>
-      <div class="cred-card">
-        <div class="usecase-kicker">Security Details</div>
-        <div class="cred-list">
-          <div><b>Crypto:</b> ECDH P-256 + HKDF-SHA-256 + AES-256-GCM.</div>
-          <div><b>Relay can see:</b> routing metadata (session/user IDs, timestamps, status).</div>
-          <div><b>Relay cannot see:</b> encrypted tool payloads, stdin, and terminal output.</div>
-        </div>
+      <div class="security-row">
+        <div class="security-row-label">Relay can see</div>
+        <div class="security-row-value dim">Session IDs, timestamps, approval status</div>
+      </div>
+      <div class="security-row">
+        <div class="security-row-label">Relay cannot see</div>
+        <div class="security-row-value green">Tool payloads · stdin · terminal output</div>
       </div>
     </div>
   </div>
-</div>
+</section>
 
-<!-- Auth -->
-<div id="auth">
-  <div class="auth-box">
-    <div class="auth-logo">
-      <div class="wordmark">AgentCockpit</div>
-      <div class="tagline">AI session control plane</div>
-    </div>
-    <form class="auth-form" id="login-form">
-      <div class="field">
-        <label>Email</label>
-        <input type="email" id="email" autocomplete="email" required placeholder="you@example.com">
-      </div>
-      <div class="field">
-        <label>Password</label>
-        <input type="password" id="password" autocomplete="current-password" required placeholder="••••••••">
-      </div>
-      <div id="auth-error"></div>
-      <button type="submit" class="btn-primary" id="login-btn">Sign in</button>
-      <div style="text-align:center;font-size:11px;color:var(--dim);margin-top:4px;">
-        No account? <a href="#" id="show-register" style="color:var(--green);text-decoration:none;">Register</a>
-      </div>
-    </form>
-    <form class="auth-form" id="register-form" style="display:none;">
-      <div class="field">
-        <label>Name</label>
-        <input type="text" id="reg-name" autocomplete="name" required placeholder="Your Name">
-      </div>
-      <div class="field">
-        <label>Email</label>
-        <input type="email" id="reg-email" autocomplete="email" required placeholder="you@example.com">
-      </div>
-      <div class="field">
-        <label>Password</label>
-        <input type="password" id="reg-password" autocomplete="new-password" required placeholder="••••••••">
-      </div>
-      <div id="reg-error"></div>
-      <button type="submit" class="btn-primary" id="register-btn">Create account</button>
-      <div style="text-align:center;font-size:11px;color:var(--dim);margin-top:4px;">
-        Have an account? <a href="#" id="show-login" style="color:var(--green);text-decoration:none;">Sign in</a>
-      </div>
-    </form>
+<hr class="section-divider">
+
+<!-- ── CTA ── -->
+<section class="cta-section">
+  <h2>Start in minutes.</h2>
+  <p>
+    Create an account, connect your first host, and approve your first tool call —
+    all in under five minutes.
+  </p>
+  <div class="cta-btns">
+    <a href="/dashboard" class="btn-primary lg">Open dashboard</a>
+    <a href="/login" class="btn-ghost-lg">Sign in</a>
   </div>
-</div>
+</section>
 
-<!-- App -->
-<div id="app">
-  <header>
-    <span class="logo">AgentCockpit</span>
-    <div class="header-right">
-      <div class="ws-indicator">
-        <div class="ws-dot" id="ws-dot"></div>
-        <span id="ws-label">disconnected</span>
-      </div>
-      <button class="btn-approval-badge" id="approval-badge" style="display:none" title="Toggle pending approvals">
-        ⚠ <span id="approval-badge-count">0</span> pending
-      </button>
-      <button class="btn-ghost btn-theme" id="theme-btn" title="Toggle light/dark mode">◐</button>
-      <button class="btn-ghost" id="logout-btn">Logout</button>
+<!-- ── Footer ── -->
+<footer>
+  <div class="footer-inner container">
+    <div class="footer-wordmark">AgentCockpit</div>
+    <div class="footer-links">
+      <a href="#features">Features</a>
+      <a href="#how-it-works">How it works</a>
+      <a href="#security">Security</a>
+      <a href="/login">Sign in</a>
+      <a href="/dashboard">Dashboard</a>
     </div>
-  </header>
-
-  <!-- Approvals (collapsible, opens when pending) -->
-  <div id="approvals-section">
-    <div class="section-header alert-header" id="approvals-header" style="cursor:pointer" onclick="toggleApprovals()">
-      <span>Pending Approvals</span>
-      <span class="count" id="approvals-count">0</span>
-      <span style="margin-left:auto;font-size:10px;color:var(--amber)" id="approvals-toggle-label">▾ collapse</span>
-    </div>
-    <div class="approvals-list" id="approvals-list"></div>
+    <div class="footer-copy">agentcockpit.app</div>
   </div>
+</footer>
 
-  <!-- Hosts + Sessions -->
-  <div class="columns">
-    <div class="col">
-      <div class="section-header">
-        <span>Hosts</span>
-        <span class="count" id="hosts-count">0</span>
-        <button class="btn-ghost" id="add-host-btn" style="margin-left:auto;padding:3px 8px;font-size:10px;">+ Add</button>
-      </div>
-      <div class="col-body" id="hosts-list">
-        <div class="loading">Loading...</div>
-      </div>
-    </div>
-    <div class="col">
-      <div class="section-header">
-        <span>Sessions</span>
-        <span class="count" id="sessions-count">0</span>
-        <button class="btn-ghost" id="new-session-btn" style="margin-left:auto;padding:3px 8px;font-size:10px;">+ New</button>
-      </div>
-      <div class="col-body" id="sessions-list">
-        <div class="loading">Loading...</div>
-      </div>
-    </div>
-  </div>
-</div>
+<script>
+  // Smooth active state for nav links on scroll
+  const sections = document.querySelectorAll('section[id]');
+  const navLinks = document.querySelectorAll('.nav-link[href^="#"]');
 
-<!-- Add Host Modal -->
-<div class="modal-backdrop" id="add-host-modal">
-  <div class="modal">
-    <div class="modal-header">
-      <span class="modal-title">Connect a host</span>
-      <button class="modal-close" id="modal-close-btn">&#x2715;</button>
-    </div>
-    <div class="modal-body" id="modal-body">
-      <div class="modal-step">
-        <div class="modal-step-label" style="color:var(--dim);font-size:11px;">Generating secure invite...</div>
-      </div>
-    </div>
-  </div>
-</div>
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navLinks.forEach(l => l.style.color = '');
+        const active = document.querySelector(`.nav-link[href="#${entry.target.id}"]`);
+        if (active) active.style.color = 'rgba(242,242,242,0.9)';
+      }
+    });
+  }, { rootMargin: '-40% 0px -50% 0px' });
 
-<!-- New Session Modal -->
-<div class="modal-backdrop" id="new-session-modal">
-  <div class="modal">
-    <div class="modal-header">
-      <span class="modal-title">New shell session</span>
-      <button class="modal-close" id="ns-close-btn">&#x2715;</button>
-    </div>
-    <div class="modal-body">
-      <div class="modal-step">
-        <div class="modal-step-label">Host</div>
-        <select class="field-select" id="ns-host"></select>
-      </div>
-      <div class="modal-error" id="ns-error"></div>
-      <button class="btn-primary" id="ns-start-btn">Start shell</button>
-    </div>
-  </div>
-</div>
+  sections.forEach(s => observer.observe(s));
+</script>
 
-<!-- Terminal Modal -->
-<div class="modal-backdrop" id="term-modal">
-  <div class="term-container">
-    <div class="term-header">
-      <span class="term-title" id="term-title">terminal</span>
-      <span class="status-badge running" id="term-status" style="flex-shrink:0"></span>
-      <button class="modal-close" id="term-close-btn">&#x2715;</button>
-    </div>
-    <div id="xterm-container"></div>
-  </div>
-</div>
-
-<div id="toast-container"></div>
-
-<script src="/app.js"></script>
 </body>
 </html>
