@@ -292,11 +292,13 @@ func (d *Daemon) sendToRelay(msg any) {
 
 // HookRequest is sent from `agentcockpit hook` to the daemon over the Unix socket.
 type HookRequest struct {
-	RequestID string          `json:"requestId"`
-	SessionID string          `json:"sessionId"`
-	ToolName  string          `json:"toolName"`
-	ToolInput json.RawMessage `json:"toolInput"`
-	RiskLevel string          `json:"riskLevel"`
+	RequestID         string          `json:"requestId"`
+	SessionID         string          `json:"sessionId"`
+	ToolName          string          `json:"toolName"`
+	ToolInput         json.RawMessage `json:"toolInput"`
+	RiskLevel         string          `json:"riskLevel"`
+	InputTokens       int             `json:"inputTokens,omitempty"`
+	ContextWindowSize int             `json:"contextWindowSize,omitempty"`
 }
 
 // HookResponse is sent back from the daemon to the hook shim.
@@ -354,12 +356,14 @@ func (d *Daemon) handleHookConn(conn net.Conn) {
 
 	// Forward the approval request to the relay server.
 	d.sendToRelay(protocol.ApprovalRequest{
-		Type:      protocol.TypeApprovalRequest,
-		RequestID: req.RequestID,
-		SessionID: req.SessionID,
-		ToolName:  req.ToolName,
-		ToolInput: req.ToolInput,
-		RiskLevel: req.RiskLevel,
+		Type:              protocol.TypeApprovalRequest,
+		RequestID:         req.RequestID,
+		SessionID:         req.SessionID,
+		ToolName:          req.ToolName,
+		ToolInput:         req.ToolInput,
+		RiskLevel:         req.RiskLevel,
+		InputTokens:       req.InputTokens,
+		ContextWindowSize: req.ContextWindowSize,
 	})
 
 	// Block until the user decides (no timeout — by design).

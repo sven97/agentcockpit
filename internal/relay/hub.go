@@ -25,6 +25,13 @@ const (
 // so the caller (server) can persist it to the database.
 type ApprovalPersistFn func(ctx context.Context, approval *protocol.ApprovalRequest, userID string)
 
+// sessionTokenState holds the latest known token usage for a session.
+type sessionTokenState struct {
+	InputTokens       int
+	ContextWindowSize int
+	UserID            string
+}
+
 // Hub routes messages between connected host agents and browser clients.
 // All public methods are goroutine-safe.
 type Hub struct {
@@ -38,6 +45,10 @@ type Hub struct {
 	pendingApprovals   map[string]chan *protocol.ApprovalResponse
 	pendingApprovalsMu sync.Mutex
 
+	// sessionTokens tracks the latest context window usage per session.
+	sessionTokens   map[string]*sessionTokenState
+	sessionTokensMu sync.RWMutex
+
 	// onApproval is called when an approval_request arrives (for DB persistence).
 	onApproval ApprovalPersistFn
 }
@@ -49,6 +60,7 @@ func NewHub(st store.Store) *Hub {
 		browsers:         make(map[string]*BrowserConn),
 		store:            st,
 		pendingApprovals: make(map[string]chan *protocol.ApprovalResponse),
+		sessionTokens:    make(map[string]*sessionTokenState),
 	}
 }
 
@@ -334,6 +346,24 @@ func (h *Hub) handleApprovalRequest(hc *HostConn, msg *protocol.ApprovalRequest)
 		h.onApproval(context.Background(), msg, hc.UserID)
 	}
 
+	// Track token state if the message carries context window data.
+	if msg.ContextWindowSize > 0 {
+		h.sessionTokensMu.Lock()
+		h.sessionTokens[msg.SessionID] = &sessionTokenState{
+			InputTokens:       msg.InputTokens,
+			ContextWindowSize: msg.ContextWindowSize,
+			UserID:            hc.UserID,
+		}
+		h.sessionTokensMu.Unlock()
+		// Broadcast a lightweight token update so browsers update their bars.
+		h.broadcastToUserBrowsersByUserID(hc.UserID, mustJSON(map[string]any{
+			"type":              "session_tokens",
+			"sessionId":         msg.SessionID,
+			"inputTokens":       msg.InputTokens,
+			"contextWindowSize": msg.ContextWindowSize,
+		}))
+	}
+
 	// Register pending channel.
 	ch := make(chan *protocol.ApprovalResponse, 1)
 	h.pendingApprovalsMu.Lock()
@@ -342,6 +372,28 @@ func (h *Hub) handleApprovalRequest(hc *HostConn, msg *protocol.ApprovalRequest)
 
 	// Push to all browser clients for this user.
 	h.broadcastToUserBrowsersByUserID(hc.UserID, mustJSON(msg))
+}
+
+// PushTokenStates sends the current token state for all of a user's sessions
+// to a single browser connection (called when a browser first connects).
+func (h *Hub) PushTokenStates(bc *BrowserConn) {
+	h.sessionTokensMu.RLock()
+	defer h.sessionTokensMu.RUnlock()
+	for sessionID, st := range h.sessionTokens {
+		if st.UserID != bc.UserID {
+			continue
+		}
+		msg := mustJSON(map[string]any{
+			"type":              "session_tokens",
+			"sessionId":         sessionID,
+			"inputTokens":       st.InputTokens,
+			"contextWindowSize": st.ContextWindowSize,
+		})
+		select {
+		case bc.send <- msg:
+		default:
+		}
+	}
 }
 
 func (h *Hub) handleApprovalResponse(msg *protocol.ApprovalResponse) {

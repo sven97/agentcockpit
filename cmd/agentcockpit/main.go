@@ -12,16 +12,24 @@ var version = "dev"
 
 var rootCmd = &cobra.Command{
 	Use:   "agentcockpit",
-	Short: "Centralized AI coding session manager",
+	Short: "AI session control plane — run and observe AI coding agents remotely",
 }
 
 func init() {
-	rootCmd.AddCommand(serveCmd)
-	rootCmd.AddCommand(connectCmd)
-	rootCmd.AddCommand(agentCmd)
+	// Host commands
+	rootCmd.AddCommand(installCmd)
+	rootCmd.AddCommand(uninstallCmd)
+	rootCmd.AddCommand(statusCmd)
+	rootCmd.AddCommand(_daemonCmd) // hidden — called by launchd/systemd
+
+	// Hook integration (optional — enables tool approval notifications)
 	rootCmd.AddCommand(hookCmd)
 	rootCmd.AddCommand(hooksCmd)
-	rootCmd.AddCommand(sessionCmd)
+
+	// Server (self-hosted relay)
+	rootCmd.AddCommand(serveCmd)
+
+	// Admin (self-hosted server management)
 	rootCmd.AddCommand(userCmd)
 }
 

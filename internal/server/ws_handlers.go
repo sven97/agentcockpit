@@ -64,6 +64,7 @@ func (s *Server) handleBrowserWS(w http.ResponseWriter, r *http.Request) {
 	connID := generateToken32()[:16]
 	bc := s.hub.RegisterBrowser(connID, user.ID, conn)
 	go bc.RunWriter()
+	s.hub.PushTokenStates(bc)
 	bc.RunReader()
 }
 

@@ -13,7 +13,7 @@ import (
 
 var hooksCmd = &cobra.Command{
 	Use:   "hooks",
-	Short: "Manage Claude Code hook installations",
+	Short: "Manage AI agent hook integrations (tool approval notifications)",
 }
 
 var hooksSetupCmd = &cobra.Command{
@@ -107,8 +107,7 @@ func runHooksSetup(cmd *cobra.Command, args []string) error {
 	if err := os.WriteFile(settingsPath, []byte(afterStr+"\n"), 0600); err != nil {
 		return fmt.Errorf("write settings: %w", err)
 	}
-	fmt.Printf("Hook installed. Claude Code will now route all tool calls through AgentCockpit.\n")
-	fmt.Printf("Make sure the agent daemon is running:  agentcockpit agent\n")
+	fmt.Printf("Hook installed. Tool calls will now send approval notifications to AgentCockpit.\n")
 	return nil
 }
 

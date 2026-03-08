@@ -52,12 +52,14 @@ type SessionStopped struct {
 }
 
 type ApprovalRequest struct {
-	Type      string          `json:"type"`
-	RequestID string          `json:"requestId"`
-	SessionID string          `json:"sessionId"`
-	ToolName  string          `json:"toolName"`
-	ToolInput json.RawMessage `json:"toolInput"`
-	RiskLevel string          `json:"riskLevel"`
+	Type              string          `json:"type"`
+	RequestID         string          `json:"requestId"`
+	SessionID         string          `json:"sessionId"`
+	ToolName          string          `json:"toolName"`
+	ToolInput         json.RawMessage `json:"toolInput"`
+	RiskLevel         string          `json:"riskLevel"`
+	InputTokens       int             `json:"inputTokens,omitempty"`
+	ContextWindowSize int             `json:"contextWindowSize,omitempty"`
 }
 
 type ApprovalResponse struct {

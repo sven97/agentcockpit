@@ -47,4 +47,4 @@ fi
 
 echo ""
 echo "AgentCockpit installed successfully."
-echo "Run: agentcockpit connect"
+echo "Run: agentcockpit install"

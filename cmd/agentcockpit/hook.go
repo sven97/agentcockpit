@@ -19,11 +19,19 @@ var hookCmd = &cobra.Command{
 
 // HookInput is the JSON Claude Code writes to stdin for PreToolUse hooks.
 type HookInput struct {
-	SessionID string          `json:"session_id"`
-	HookEvent string          `json:"hook_event_name"`
-	ToolName  string          `json:"tool_name"`
-	ToolInput json.RawMessage `json:"tool_input"`
-	CWD       string          `json:"cwd"`
+	SessionID     string          `json:"session_id"`
+	HookEvent     string          `json:"hook_event_name"`
+	ToolName      string          `json:"tool_name"`
+	ToolInput     json.RawMessage `json:"tool_input"`
+	CWD           string          `json:"cwd"`
+	ContextWindow *HookContextWindow `json:"context_window,omitempty"`
+}
+
+type HookContextWindow struct {
+	CurrentUsage      struct {
+		InputTokens int `json:"input_tokens"`
+	} `json:"current_usage"`
+	ContextWindowSize int `json:"context_window_size"`
 }
 
 // HookOutput is the JSON we write to stdout to allow or deny the tool call.
@@ -52,6 +60,10 @@ func runHook(cmd *cobra.Command, args []string) error {
 		ToolName:  input.ToolName,
 		ToolInput: input.ToolInput,
 		RiskLevel: classifyRisk(input.ToolName, input.ToolInput),
+	}
+	if cw := input.ContextWindow; cw != nil {
+		req.InputTokens = cw.CurrentUsage.InputTokens
+		req.ContextWindowSize = cw.ContextWindowSize
 	}
 
 	// 3. Connect to the daemon's Unix socket and send the request.
