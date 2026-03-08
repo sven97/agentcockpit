@@ -1486,11 +1486,11 @@ function showAuth() {
   $('app').classList.remove('visible');
 }
 
-function showApp() {
+function showApp(password, userData) {
   $('home').classList.remove('visible');
   $('auth').classList.remove('visible');
   $('app').classList.add('visible');
-  initE2E(); // boot E2E crypto async — generates/loads keypair, registers public key
+  initE2E(password, userData); // boot E2E crypto — unwraps or generates keypair
   fetchAll();
   connectWS();
 }
@@ -1550,12 +1550,13 @@ $('login-form').addEventListener('submit', async e => {
   btn.disabled = true;
   btn.textContent = 'Signing in...';
   try {
+    const password = $('password').value;
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: $('email').value.trim(),
-        password: $('password').value,
+        password,
       }),
     });
     const data = await res.json();
@@ -1565,7 +1566,7 @@ $('login-form').addEventListener('submit', async e => {
     }
     state.token = data.token;
     localStorage.setItem('ac_token', data.token);
-    showApp();
+    showApp(password, data.user);
   } catch (err) {
     errEl.textContent = 'Network error — is the server running?';
   } finally {
@@ -1629,13 +1630,14 @@ $('register-form').addEventListener('submit', async e => {
   btn.disabled = true;
   btn.textContent = 'Creating...';
   try {
+    const password = $('reg-password').value;
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: $('reg-name').value.trim(),
         email: $('reg-email').value.trim(),
-        password: $('reg-password').value,
+        password,
       }),
     });
     const data = await res.json();
@@ -1645,7 +1647,7 @@ $('register-form').addEventListener('submit', async e => {
     }
     state.token = data.token;
     localStorage.setItem('ac_token', data.token);
-    showApp();
+    showApp(password, data.user);
   } catch (err) {
     errEl.textContent = 'Network error — is the server running?';
   } finally {
@@ -2316,8 +2318,10 @@ window.addEventListener('resize', () => { if (state.fitAddon) state.fitAddon.fit
 // ── E2E Encryption (WebCrypto) ─────────────────────────────────────────────────
 //
 // Scheme: ECDH P-256 key agreement → HKDF-SHA-256 → AES-256-GCM per message.
-// User's private key lives only in IndexedDB and never leaves the browser.
-// The relay stores/forwards only ciphertext; it cannot read payload content.
+// ── E2E Encryption ─────────────────────────────────────────────────────────────
+// Zero-knowledge relay: the server stores only ciphertext and public keys.
+// Private key is wrapped with a PBKDF2-derived key from the user's password,
+// allowing any browser to reconstruct the keypair after login.
 
 const E2E_DB_NAME = 'agentcockpit-crypto';
 const E2E_DB_VERSION = 1;
@@ -2325,7 +2329,6 @@ const E2E_STORE_NAME = 'keys';
 const E2E_KEY_ID = 'userKeypair';
 const SESSION_KEY_CACHE = new Map(); // sessionId → CryptoKey
 
-// Open (or create) the IndexedDB database for key storage.
 function openCryptoDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(E2E_DB_NAME, E2E_DB_VERSION);
@@ -2353,27 +2356,101 @@ function idbPut(db, key, value) {
   });
 }
 
-// Ensure the user has a long-term P-256 ECDH keypair in IndexedDB.
-// If none exists, generates one and registers the public key with the relay.
-// Returns the CryptoKeyPair (private key is non-extractable inside the browser engine).
-async function ensureUserKeypair() {
+// Derive an AES-256-GCM wrapping key from a password + salt using PBKDF2-SHA-256.
+async function deriveWrappingKey(password, saltBytes) {
+  const baseKey = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', hash: 'SHA-256', salt: saltBytes, iterations: 600000 },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+// Encrypt a PKCS#8 private key with a wrapping key → base64 [IV][ciphertext].
+async function encryptPrivateKey(wrappingKey, privateKey) {
+  const pkcs8 = await crypto.subtle.exportKey('pkcs8', privateKey);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, wrappingKey, pkcs8);
+  const out = new Uint8Array(12 + ct.byteLength);
+  out.set(iv);
+  out.set(new Uint8Array(ct), 12);
+  return btoa(String.fromCharCode(...out));
+}
+
+// Decrypt a wrapped PKCS#8 private key → CryptoKey.
+async function decryptPrivateKey(wrappingKey, encB64) {
+  const blob = Uint8Array.from(atob(encB64), c => c.charCodeAt(0));
+  const pkcs8 = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: blob.slice(0, 12) }, wrappingKey, blob.slice(12)
+  );
+  return crypto.subtle.importKey(
+    'pkcs8', pkcs8, { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey', 'deriveBits']
+  );
+}
+
+// Ensure the user has a P-256 ECDH keypair available.
+//
+// Flow A — IndexedDB hit (common case, any browser after first login):
+//   Return cached keypair immediately.
+//
+// Flow B — New browser, server has wrapped key (password required):
+//   Derive wrapping key from password → decrypt private key → re-import public key from server
+//   → store in IndexedDB.
+//
+// Flow C — First ever login (no key anywhere):
+//   Generate new keypair → wrap private key with password → upload public key + wrapped blob
+//   → store in IndexedDB.
+//
+// Flow D — Page reload with saved token, no password available:
+//   Falls back to IndexedDB only; if not found, E2E runs without a key (graceful degradation).
+//   User re-logs in to restore the key on this browser.
+async function ensureUserKeypair(password, userData) {
   try {
     const db = await openCryptoDB();
     const stored = await idbGet(db, E2E_KEY_ID);
     if (stored) return stored;
 
-    // Generate new keypair.
-    const kp = await crypto.subtle.generateKey(
-      { name: 'ECDH', namedCurve: 'P-256' },
-      true,  // extractable so we can export for backup
-      ['deriveKey', 'deriveBits']
-    );
-    await idbPut(db, E2E_KEY_ID, kp);
+    let kp;
 
-    // Register the public key with the relay.
-    const spkiBytes = await crypto.subtle.exportKey('spki', kp.publicKey);
-    const spkiB64 = btoa(String.fromCharCode(...new Uint8Array(spkiBytes)));
-    await api('PUT', '/api/me/e2e-pubkey', { publicKey: spkiB64 });
+    if (password && userData?.e2eEncryptedPrivKey && userData?.e2ePbkdf2Salt) {
+      // Flow B: unwrap existing key from server using the login password.
+      const saltBytes = Uint8Array.from(atob(userData.e2ePbkdf2Salt), c => c.charCodeAt(0));
+      const wrappingKey = await deriveWrappingKey(password, saltBytes);
+      const privateKey = await decryptPrivateKey(wrappingKey, userData.e2eEncryptedPrivKey);
+      // Re-import the public key (stored unencrypted on server).
+      const spkiBytes = Uint8Array.from(atob(userData.e2ePublicKey), c => c.charCodeAt(0));
+      const publicKey = await crypto.subtle.importKey(
+        'spki', spkiBytes, { name: 'ECDH', namedCurve: 'P-256' }, true, []
+      );
+      kp = { privateKey, publicKey };
+    } else {
+      // Flow C: generate a brand-new keypair.
+      kp = await crypto.subtle.generateKey(
+        { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey', 'deriveBits']
+      );
+      const spkiBytes = await crypto.subtle.exportKey('spki', kp.publicKey);
+      const spkiB64 = btoa(String.fromCharCode(...new Uint8Array(spkiBytes)));
+
+      if (password) {
+        // Wrap the private key and upload all material together.
+        const saltBytes = crypto.getRandomValues(new Uint8Array(16));
+        const saltB64 = btoa(String.fromCharCode(...saltBytes));
+        const wrappingKey = await deriveWrappingKey(password, saltBytes);
+        const encPrivKey = await encryptPrivateKey(wrappingKey, kp.privateKey);
+        await api('PUT', '/api/me/e2e-pubkey', {
+          publicKey: spkiB64, encryptedPrivKey: encPrivKey, pbkdf2Salt: saltB64,
+        });
+      } else {
+        // Flow D: no password — upload public key only (no wrapping possible).
+        await api('PUT', '/api/me/e2e-pubkey', { publicKey: spkiB64, encryptedPrivKey: '', pbkdf2Salt: '' });
+      }
+    }
+
+    await idbPut(db, E2E_KEY_ID, kp);
     return kp;
   } catch (err) {
     console.warn('E2E: key setup failed', err);
@@ -2387,7 +2464,7 @@ async function getSessionKey(sessionId, agentEphemeralPubKeyB64) {
   if (SESSION_KEY_CACHE.has(sessionId)) return SESSION_KEY_CACHE.get(sessionId);
   if (!agentEphemeralPubKeyB64) return null;
 
-  const kp = await ensureUserKeypair();
+  const kp = await ensureUserKeypair(null, null);
   if (!kp) return null;
 
   try {
@@ -2482,8 +2559,9 @@ async function decryptApprovalPayload(sessionId, encB64, requestId) {
 }
 
 // Called once after successful auth to boot E2E crypto.
-async function initE2E() {
-  await ensureUserKeypair();
+// password and userData are available during login/register; absent on page reload.
+async function initE2E(password, userData) {
+  await ensureUserKeypair(password, userData);
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────────
