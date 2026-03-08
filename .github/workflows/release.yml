@@ -1,16 +1,25 @@
-name: Release
+name: Release CLI
 
-# Triggered either by pushing a tag (git tag v1.2.3 && git push origin v1.2.3)
-# or manually from the GitHub Actions UI with an explicit version string.
+# Auto-releases when CLI or agent code changes on main.
+# Manual releases via workflow_dispatch (with optional explicit version).
+#
+# Server/frontend changes (internal/server, internal/relay, internal/store)
+# only trigger deploy.yml — no CLI release needed.
+
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+    paths:
+      - 'cmd/**'
+      - 'internal/agent/**'
+      - 'internal/protocol/**'
+      - 'go.mod'
+      - 'go.sum'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. v1.2.3)'
-        required: true
+        description: 'Version to release (e.g. v1.2.3) — leave blank to auto-bump patch'
+        required: false
 
 jobs:
   release:
@@ -22,14 +31,28 @@ jobs:
         with:
           fetch-depth: 0
 
-      # When triggered manually, create the tag so goreleaser can find it.
-      - name: Create tag (manual trigger only)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Determine version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            next="${{ github.event.inputs.version }}"
+          else
+            latest=$(git tag --sort=-v:refname | grep '^v' | head -1)
+            if [ -z "$latest" ]; then
+              next="v0.1.0"
+            else
+              IFS='.' read -r major minor patch <<< "${latest#v}"
+              next="v${major}.${minor}.$((patch + 1))"
+            fi
+          fi
+          echo "tag=${next}" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "${{ github.event.inputs.version }}"
-          git push origin "${{ github.event.inputs.version }}"
+          git tag "${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
 
       - uses: actions/setup-go@v5
         with:
