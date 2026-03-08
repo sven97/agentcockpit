@@ -1490,6 +1490,13 @@ function handleWS(msg) {
       renderSessions();
       break;
     }
+    case 'host_deleted': {
+      state.hosts = state.hosts.filter(h => h.ID !== msg.hostId);
+      state.sessions = state.sessions.filter(s => s.HostID !== msg.hostId);
+      renderHosts();
+      renderSessions();
+      break;
+    }
   }
 }
 

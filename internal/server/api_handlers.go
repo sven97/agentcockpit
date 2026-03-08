@@ -111,6 +111,11 @@ func (s *Server) handleDeleteHost(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "db error")
 		return
 	}
+	// Notify browser clients so they refresh hosts and sessions immediately.
+	s.hub.BroadcastToUser(user.ID, map[string]any{
+		"type":   "host_deleted",
+		"hostId": id,
+	})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
