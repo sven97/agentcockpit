@@ -781,9 +781,10 @@ function toast(msg) {
 
 // ── Terminal state & functions ─────────────────────────────────────────────────
 
-Object.assign(state, { attachedSession: null, xterm: null, fitAddon: null });
+Object.assign(state, { attachedSession: null, xterm: null, fitAddon: null, termResizeObserver: null });
 
 async function openTerminal(sessionId, name, status, live) {
+  if (state.termResizeObserver) { state.termResizeObserver.disconnect(); state.termResizeObserver = null; }
   if (state.xterm) { state.xterm.dispose(); state.xterm = null; state.fitAddon = null; }
   state.attachedSession = live ? sessionId : null;
 
@@ -838,8 +839,16 @@ async function openTerminal(sessionId, name, status, live) {
   }
 
   $('term-modal').classList.add('visible');
-  // rAF + small timeout: ensures display:flex layout is fully resolved before FitAddon measures
-  requestAnimationFrame(() => setTimeout(() => { fitAddon.fit(); if (live) term.focus(); }, 0));
+  // ResizeObserver fires as soon as the container has real dimensions (after display:flex resolves).
+  // This is more reliable than rAF/setTimeout which can fire before layout is complete.
+  const ro = new ResizeObserver(() => {
+    if (container.offsetWidth > 0 && container.offsetHeight > 0) {
+      fitAddon.fit();
+      if (live) term.focus();
+    }
+  });
+  ro.observe(container);
+  state.termResizeObserver = ro;
 
   // Replay stored scrollback (decrypt if E2E is active)
   try {
@@ -863,6 +872,7 @@ async function openTerminal(sessionId, name, status, live) {
 
 function detachSession() {
   state.attachedSession = null;
+  if (state.termResizeObserver) { state.termResizeObserver.disconnect(); state.termResizeObserver = null; }
   if (state.xterm) { state.xterm.dispose(); state.xterm = null; state.fitAddon = null; }
   $('term-modal').classList.remove('visible');
 }
@@ -922,7 +932,7 @@ $('term-close-btn').addEventListener('click', detachSession);
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && $('new-session-modal').classList.contains('visible')) closeNewSessionModal();
 });
-window.addEventListener('resize', () => { if (state.fitAddon) state.fitAddon.fit(); });
+// Window resize is handled by the ResizeObserver on #xterm-container (set up in openTerminal).
 
 // ── E2E Encryption (WebCrypto) ─────────────────────────────────────────────────
 //
