@@ -299,6 +299,9 @@ type HookRequest struct {
 	RiskLevel         string          `json:"riskLevel"`
 	InputTokens       int             `json:"inputTokens,omitempty"`
 	ContextWindowSize int             `json:"contextWindowSize,omitempty"`
+	// HasTTY is true when the hook shim has a local terminal available.
+	// In that case the user approves locally; this notification is dashboard-only.
+	HasTTY bool `json:"hasTty,omitempty"`
 }
 
 // HookResponse is sent back from the daemon to the hook shim.
@@ -338,7 +341,13 @@ func (d *Daemon) runSocketListener(ctx context.Context) {
 }
 
 // handleHookConn processes a single hook shim connection.
-// The shim sends a HookRequest JSON, blocks, and reads back a HookResponse JSON.
+//
+// Two modes:
+//   - HasTTY=true  — user is at a terminal and approves locally.  We forward
+//     the request to the relay as a dashboard notification and return immediately.
+//   - HasTTY=false — headless/remote session.  We register a pending channel,
+//     forward to the relay, block until the browser sends an approval_response,
+//     then write the decision back to the shim over the same Unix socket.
 func (d *Daemon) handleHookConn(conn net.Conn) {
 	defer conn.Close()
 
@@ -348,13 +357,7 @@ func (d *Daemon) handleHookConn(conn net.Conn) {
 		return
 	}
 
-	// Register a channel to receive the relay's approval response.
-	ch := make(chan *protocol.ApprovalResponse, 1)
-	d.pendingApprovalsMu.Lock()
-	d.pendingApprovals[req.RequestID] = ch
-	d.pendingApprovalsMu.Unlock()
-
-	// Forward the approval request to the relay server.
+	// Always notify the relay/dashboard.
 	d.sendToRelay(protocol.ApprovalRequest{
 		Type:              protocol.TypeApprovalRequest,
 		RequestID:         req.RequestID,
@@ -366,13 +369,37 @@ func (d *Daemon) handleHookConn(conn net.Conn) {
 		ContextWindowSize: req.ContextWindowSize,
 	})
 
-	// Block until the user decides (no timeout — by design).
-	resp := <-ch
+	if req.HasTTY {
+		// User approves at the terminal — nothing more to do here.
+		return
+	}
 
-	// Send decision back to the hook shim.
-	json.NewEncoder(conn).Encode(HookResponse{
-		Decision: resp.Decision,
-		Reason:   resp.Reason,
-	})
+	// Headless: register pending channel and wait for browser decision.
+	ch := make(chan *protocol.ApprovalResponse, 1)
+	d.pendingApprovalsMu.Lock()
+	d.pendingApprovals[req.RequestID] = ch
+	d.pendingApprovalsMu.Unlock()
+	defer func() {
+		d.pendingApprovalsMu.Lock()
+		delete(d.pendingApprovals, req.RequestID)
+		d.pendingApprovalsMu.Unlock()
+	}()
+
+	// Wait up to 5 minutes for a browser response; fail open on timeout.
+	timer := time.NewTimer(5 * time.Minute)
+	defer timer.Stop()
+
+	var resp HookResponse
+	select {
+	case ar := <-ch:
+		resp.Decision = ar.Decision
+		resp.Reason = ar.Reason
+	case <-timer.C:
+		resp.Decision = "allow"
+		resp.Reason = "approval timeout"
+	}
+
+	conn.SetWriteDeadline(time.Now().Add(10 * time.Second)) //nolint:errcheck
+	json.NewEncoder(conn).Encode(resp)                      //nolint:errcheck
 }
 

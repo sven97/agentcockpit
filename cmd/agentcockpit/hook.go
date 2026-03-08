@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"net"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/sven97/agentcockpit/internal/agent"
@@ -19,16 +22,16 @@ var hookCmd = &cobra.Command{
 
 // HookInput is the JSON Claude Code writes to stdin for PreToolUse hooks.
 type HookInput struct {
-	SessionID     string          `json:"session_id"`
-	HookEvent     string          `json:"hook_event_name"`
-	ToolName      string          `json:"tool_name"`
-	ToolInput     json.RawMessage `json:"tool_input"`
-	CWD           string          `json:"cwd"`
+	SessionID     string             `json:"session_id"`
+	HookEvent     string             `json:"hook_event_name"`
+	ToolName      string             `json:"tool_name"`
+	ToolInput     json.RawMessage    `json:"tool_input"`
+	CWD           string             `json:"cwd"`
 	ContextWindow *HookContextWindow `json:"context_window,omitempty"`
 }
 
 type HookContextWindow struct {
-	CurrentUsage      struct {
+	CurrentUsage struct {
 		InputTokens int `json:"input_tokens"`
 	} `json:"current_usage"`
 	ContextWindowSize int `json:"context_window_size"`
@@ -66,33 +69,64 @@ func runHook(cmd *cobra.Command, args []string) error {
 		req.ContextWindowSize = cw.ContextWindowSize
 	}
 
-	// 3. Connect to the daemon's Unix socket and send the request.
-	conn, err := net.Dial("unix", "/tmp/agentcockpit-agent.sock")
+	// 3. Try to open /dev/tty for interactive local approval.
+	// When the user is at a terminal they can approve/deny right there; the
+	// dashboard receives a notification in parallel but does not gate the call.
+	tty, ttyErr := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if ttyErr == nil {
+		defer tty.Close()
+		req.HasTTY = true
+		// Fire-and-forget: send dashboard notification (best-effort).
+		if conn, err := net.DialTimeout("unix", "/tmp/agentcockpit-agent.sock", time.Second); err == nil {
+			json.NewEncoder(conn).Encode(req) //nolint:errcheck
+			conn.Close()
+		}
+		// Prompt locally and return the user's decision.
+		return promptLocalApproval(tty, input.HookEvent, req)
+	}
+
+	// 4. Headless path: connect to daemon and block until browser approves/denies.
+	conn, err := net.DialTimeout("unix", "/tmp/agentcockpit-agent.sock", 2*time.Second)
 	if err != nil {
-		// Daemon not running — fail open (allow) so Claude Code isn't blocked.
-		fmt.Fprintf(os.Stderr, "agentcockpit: daemon not running, allowing tool call\n")
-		return writeDecision(input.HookEvent, "allow", "daemon unavailable")
+		// Daemon not running — fail open so the agent is not stuck.
+		return writeDecision(input.HookEvent, "allow", "")
 	}
 	defer conn.Close()
 
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
-		return writeDecision(input.HookEvent, "allow", "daemon write error")
+		return writeDecision(input.HookEvent, "allow", "")
 	}
 
-	// 4. Block waiting for the daemon to relay the decision back.
+	// Block until the daemon writes back the browser decision (up to 5 min).
 	var resp agent.HookResponse
+	conn.SetDeadline(time.Now().Add(5 * time.Minute)) //nolint:errcheck
 	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
-		return writeDecision(input.HookEvent, "allow", "daemon read error")
+		// Timeout or error — fail open.
+		return writeDecision(input.HookEvent, "allow", "")
 	}
+	return writeDecision(input.HookEvent, resp.Decision, resp.Reason)
+}
 
-	// 5. Write decision to stdout and exit with the appropriate code.
-	if err := writeDecision(input.HookEvent, resp.Decision, resp.Reason); err != nil {
-		return err
+// promptLocalApproval shows a terminal prompt and returns the user's decision.
+func promptLocalApproval(tty *os.File, hookEvent string, req agent.HookRequest) error {
+	riskColor := "\033[33m" // yellow — execute
+	switch req.RiskLevel {
+	case "read":
+		riskColor = "\033[32m" // green
+	case "destructive":
+		riskColor = "\033[31m" // red
 	}
-	if resp.Decision == "deny" {
-		os.Exit(2) // Claude Code treats exit code 2 as a block.
+	fmt.Fprintf(tty, "\n\033[1m▸ AgentCockpit: %s\033[0m %s[%s]\033[0m\n  Allow? [Y/n] ",
+		req.ToolName, riskColor, req.RiskLevel)
+
+	reader := bufio.NewReader(tty)
+	line, _ := reader.ReadString('\n')
+	line = strings.TrimSpace(strings.ToLower(line))
+
+	if line == "n" || line == "no" {
+		return writeDecision(hookEvent, "deny", "rejected at terminal")
 	}
-	return nil
+	return writeDecision(hookEvent, "allow", "")
 }
 
 func writeDecision(hookEvent, decision, reason string) error {
