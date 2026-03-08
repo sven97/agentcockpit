@@ -815,8 +815,9 @@ async function openTerminal(sessionId, name, status, live) {
 
   const container = $('xterm-container');
   container.innerHTML = '';
-  term.open(container);
 
+  // Set state early so termWrite() can buffer PTY frames that arrive before open().
+  // xterm.js buffers writes made before term.open() and flushes them on open.
   state.xterm = term;
   state.fitAddon = fitAddon;
 
@@ -839,16 +840,19 @@ async function openTerminal(sessionId, name, status, live) {
   }
 
   $('term-modal').classList.add('visible');
-  // ResizeObserver fires as soon as the container has real dimensions (after display:flex resolves).
-  // This is more reliable than rAF/setTimeout which can fire before layout is complete.
-  const ro = new ResizeObserver(() => {
-    if (container.offsetWidth > 0 && container.offsetHeight > 0) {
-      fitAddon.fit();
-      if (live) term.focus();
-    }
+  // Open the terminal AFTER the modal is visible so xterm can measure character
+  // dimensions against a real (non-zero) container. Opening inside display:none
+  // causes charWidth/charHeight to be 0, making fitAddon.fit() a no-op.
+  requestAnimationFrame(() => {
+    term.open(container);
+    fitAddon.fit();
+    if (live) term.focus();
+    // ResizeObserver keeps the terminal fitted on subsequent window resizes.
+    if (state.termResizeObserver) state.termResizeObserver.disconnect();
+    const ro = new ResizeObserver(() => fitAddon.fit());
+    ro.observe(container);
+    state.termResizeObserver = ro;
   });
-  ro.observe(container);
-  state.termResizeObserver = ro;
 
   // Replay stored scrollback (decrypt if E2E is active)
   try {
