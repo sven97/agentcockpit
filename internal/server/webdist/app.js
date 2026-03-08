@@ -804,6 +804,7 @@ async function openTerminal(sessionId, name, status, live) {
     scrollback: 5000,
     convertEol: false,
     disableStdin: !live,
+    padding: 6,
   });
   const fitAddon = new FitAddon.FitAddon();
   term.loadAddon(fitAddon);
@@ -834,8 +835,8 @@ async function openTerminal(sessionId, name, status, live) {
   }
 
   $('term-modal').classList.add('visible');
-  // Double rAF: first frame resolves display:flex layout, second measures stable dimensions
-  requestAnimationFrame(() => requestAnimationFrame(() => { fitAddon.fit(); if (live) term.focus(); }));
+  // rAF + small timeout: ensures display:flex layout is fully resolved before FitAddon measures
+  requestAnimationFrame(() => setTimeout(() => { fitAddon.fit(); if (live) term.focus(); }, 0));
 
   // Replay stored scrollback (decrypt if E2E is active)
   try {

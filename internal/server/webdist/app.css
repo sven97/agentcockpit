@@ -1270,10 +1270,10 @@ header {
   flex: 1;
   min-height: 0; /* prevents flex child from overflowing its parent */
   overflow: hidden;
-  padding: 6px 8px;
   background: #0d0d0d;
 }
 
 /* xterm.js internal overrides — don't fight xterm's row-height math */
 .xterm { height: 100%; }
+.xterm-screen { width: 100% !important; }
 .xterm-viewport { border-radius: 0; }
