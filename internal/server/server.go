@@ -154,8 +154,11 @@ func (s *Server) Start() error {
 		}
 	}
 
-	// Any sessions still in "starting"/"running"/"awaiting_approval" at startup
-	// are dangling from a previous crash — mark them as error so they don't get stuck.
+	// On startup, all existing WebSocket connections from the previous instance are
+	// gone. Mark hosts offline and sessions as error so stale DB state doesn't lie.
+	if err := s.store.MarkAllHostsOffline(context.Background()); err != nil {
+		log.Printf("warn: mark hosts offline: %v", err)
+	}
 	if err := s.store.MarkStaleSessionsAsError(context.Background()); err != nil {
 		log.Printf("warn: mark stale sessions: %v", err)
 	}

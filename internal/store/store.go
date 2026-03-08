@@ -34,6 +34,7 @@ type Store interface {
 	GetHostByID(ctx context.Context, id string) (*Host, error)
 	ListHostsByUser(ctx context.Context, userID string) ([]*Host, error)
 	UpdateHostStatus(ctx context.Context, id, status string, lastSeen time.Time) error
+	MarkAllHostsOffline(ctx context.Context) error
 	DeleteHost(ctx context.Context, id string) error
 
 	// Sessions
