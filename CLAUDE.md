@@ -73,3 +73,63 @@ PTY output is sent as binary WebSocket frames with a 33-byte header:
 ### Host registration
 
 Hosts self-register via an invite flow: browser generates a short-lived invite token (`POST /api/hosts/invite`), CLI claims it (`POST /api/hosts/claim`). `agentcockpit install --invite <token>` performs the claim and daemon setup in one step.
+
+## Git Conventions
+
+All agents (Claude, Codex, humans) must follow these rules consistently.
+
+### Branch names
+
+Format: `<type>/<short-description>` — lowercase, hyphens, no agent prefix.
+
+| Type | When to use |
+|---|---|
+| `feat/` | New feature or capability |
+| `fix/` | Bug fix |
+| `chore/` | CI, config, deps, tooling |
+| `refactor/` | Code restructure, no behaviour change |
+| `docs/` | Documentation only |
+
+Examples: `feat/e2e-encryption`, `fix/terminal-full-height`, `chore/path-based-release`
+
+### Commit messages
+
+Format: **Conventional Commits** — `<type>(<scope>): <description>`
+
+- Type: `feat`, `fix`, `chore`, `refactor`, `docs`, `test`, `perf`
+- Scope: package or area affected, e.g. `agent`, `relay`, `store`, `ui`, `ci`
+- Description: imperative, lowercase, no trailing period, ≤72 chars
+- Body (optional): explain *why*, not *what*; wrap at 72 chars
+
+```
+feat(agent): derive per-session key from user's ECDH public key
+
+Generates an ephemeral P-256 keypair on session start and sends the
+public key to the relay so the browser can derive the same AES-256-GCM
+session key independently.
+```
+
+Common types at a glance:
+```
+feat(ui): add approval badge count to nav
+fix(store): swallow duplicate-column error on re-migration
+chore(ci): trigger release only on CLI path changes
+refactor(relay): extract session sequence tracking to own struct
+docs(readme): update install instructions
+```
+
+### Pull requests
+
+- **Title**: identical to the commit message first line (same `type(scope): desc` format)
+- **Body**: always include these two sections:
+
+```markdown
+## Summary
+- bullet describing what changed and why (1–4 bullets)
+
+## Test plan
+- [ ] how to verify it works
+```
+
+- Keep PRs small and focused — one logical change per PR
+- Always run `go build ./...` and `go test ./...` before pushing
