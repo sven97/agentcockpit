@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -36,8 +37,27 @@ func (s *sqliteStore) Close() error { return s.db.Close() }
 // ── Migrations ────────────────────────────────────────────────────────────────
 
 func (s *sqliteStore) migrate() error {
-	_, err := s.db.Exec(schema)
-	return err
+	if _, err := s.db.Exec(schema); err != nil {
+		return err
+	}
+	// Additive column migrations — idempotent, safe on existing databases.
+	for _, stmt := range migrations {
+		if _, err := s.db.Exec(stmt); err != nil {
+			// SQLite returns "duplicate column name: …" when the column already exists.
+			if !strings.Contains(err.Error(), "duplicate column name") {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// migrations are ALTER TABLE statements run after schema creation.
+// Each is retried idempotently — duplicate-column errors are swallowed.
+var migrations = []string{
+	`ALTER TABLE users ADD COLUMN e2e_public_key TEXT`,
+	`ALTER TABLE sessions ADD COLUMN agent_ephemeral_pubkey TEXT`,
+	`ALTER TABLE approval_requests ADD COLUMN payload_ciphertext TEXT`,
 }
 
 const schema = `
@@ -209,27 +229,27 @@ func (s *sqliteStore) CreateUser(ctx context.Context, u *User) error {
 
 func (s *sqliteStore) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	return s.scanUser(s.db.QueryRowContext(ctx,
-		`SELECT id, email, name, password_hash, github_id, role, created_at, updated_at, deleted_at
+		`SELECT id, email, name, password_hash, github_id, role, e2e_public_key, created_at, updated_at, deleted_at
 		 FROM users WHERE email = ? AND deleted_at IS NULL`, email))
 }
 
 func (s *sqliteStore) GetUserByID(ctx context.Context, id string) (*User, error) {
 	return s.scanUser(s.db.QueryRowContext(ctx,
-		`SELECT id, email, name, password_hash, github_id, role, created_at, updated_at, deleted_at
+		`SELECT id, email, name, password_hash, github_id, role, e2e_public_key, created_at, updated_at, deleted_at
 		 FROM users WHERE id = ? AND deleted_at IS NULL`, id))
 }
 
 func (s *sqliteStore) GetUserByGitHubID(ctx context.Context, githubID string) (*User, error) {
 	return s.scanUser(s.db.QueryRowContext(ctx,
-		`SELECT id, email, name, password_hash, github_id, role, created_at, updated_at, deleted_at
+		`SELECT id, email, name, password_hash, github_id, role, e2e_public_key, created_at, updated_at, deleted_at
 		 FROM users WHERE github_id = ? AND deleted_at IS NULL`, githubID))
 }
 
 func (s *sqliteStore) scanUser(row *sql.Row) (*User, error) {
 	var u User
-	var passwordHash, githubID, createdAt, updatedAt, deletedAt sql.NullString
+	var passwordHash, githubID, e2ePubKey, createdAt, updatedAt, deletedAt sql.NullString
 	err := row.Scan(&u.ID, &u.Email, &u.Name, &passwordHash, &githubID,
-		&u.Role, &createdAt, &updatedAt, &deletedAt)
+		&u.Role, &e2ePubKey, &createdAt, &updatedAt, &deletedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -238,6 +258,7 @@ func (s *sqliteStore) scanUser(row *sql.Row) (*User, error) {
 	}
 	u.PasswordHash = passwordHash.String
 	u.GitHubID = githubID.String
+	u.E2EPublicKey = e2ePubKey.String
 	if t := parseTime(createdAt); t != nil {
 		u.CreatedAt = *t
 	}
@@ -246,6 +267,13 @@ func (s *sqliteStore) scanUser(row *sql.Row) (*User, error) {
 	}
 	u.DeletedAt = parseTime(deletedAt)
 	return &u, nil
+}
+
+func (s *sqliteStore) UpdateUserE2EPublicKey(ctx context.Context, userID, spkiBase64url string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE users SET e2e_public_key = ?, updated_at = ? WHERE id = ?`,
+		spkiBase64url, now(), userID)
+	return err
 }
 
 // ── Auth tokens ───────────────────────────────────────────────────────────────
@@ -528,14 +556,14 @@ func (s *sqliteStore) CreateSession(ctx context.Context, sess *Session) error {
 func (s *sqliteStore) GetSession(ctx context.Context, id string) (*Session, error) {
 	return s.scanSession(s.db.QueryRowContext(ctx,
 		`SELECT id, user_id, host_id, name, agent_type, working_dir, command, env_json,
-		        status, exit_code, started_at, stopped_at, created_at, deleted_at
+		        status, exit_code, started_at, stopped_at, created_at, deleted_at, agent_ephemeral_pubkey
 		 FROM sessions WHERE id = ? AND deleted_at IS NULL`, id))
 }
 
 func (s *sqliteStore) ListSessionsByUser(ctx context.Context, userID string, limit int) ([]*Session, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, user_id, host_id, name, agent_type, working_dir, command, env_json,
-		        status, exit_code, started_at, stopped_at, created_at, deleted_at
+		        status, exit_code, started_at, stopped_at, created_at, deleted_at, agent_ephemeral_pubkey
 		 FROM sessions WHERE user_id = ? AND deleted_at IS NULL
 		 ORDER BY created_at DESC LIMIT ?`, userID, limit)
 	if err != nil {
@@ -545,14 +573,15 @@ func (s *sqliteStore) ListSessionsByUser(ctx context.Context, userID string, lim
 	var sessions []*Session
 	for rows.Next() {
 		var sess Session
-		var name, envJSON, exitCode, startedAt, stoppedAt, createdAt, deletedAt sql.NullString
+		var name, envJSON, exitCode, startedAt, stoppedAt, createdAt, deletedAt, ephPubKey sql.NullString
 		if err := rows.Scan(&sess.ID, &sess.UserID, &sess.HostID, &name,
 			&sess.AgentType, &sess.WorkingDir, &sess.Command, &envJSON,
-			&sess.Status, &exitCode, &startedAt, &stoppedAt, &createdAt, &deletedAt); err != nil {
+			&sess.Status, &exitCode, &startedAt, &stoppedAt, &createdAt, &deletedAt, &ephPubKey); err != nil {
 			return nil, err
 		}
 		sess.Name = name.String
 		sess.EnvJSON = envJSON.String
+		sess.AgentEphemeralPubKey = ephPubKey.String
 		sess.StartedAt = parseTime(startedAt)
 		sess.StoppedAt = parseTime(stoppedAt)
 		if v := parseTime(createdAt); v != nil {
@@ -567,7 +596,7 @@ func (s *sqliteStore) ListSessionsByUser(ctx context.Context, userID string, lim
 func (s *sqliteStore) ListActiveSessionsByHost(ctx context.Context, hostID string) ([]*Session, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, user_id, host_id, name, agent_type, working_dir, command, env_json,
-		        status, exit_code, started_at, stopped_at, created_at, deleted_at
+		        status, exit_code, started_at, stopped_at, created_at, deleted_at, agent_ephemeral_pubkey
 		 FROM sessions WHERE host_id = ? AND status IN ('starting','running','awaiting_approval') AND deleted_at IS NULL`,
 		hostID)
 	if err != nil {
@@ -577,14 +606,15 @@ func (s *sqliteStore) ListActiveSessionsByHost(ctx context.Context, hostID strin
 	var sessions []*Session
 	for rows.Next() {
 		var sess Session
-		var name, envJSON, exitCode, startedAt, stoppedAt, createdAt, deletedAt sql.NullString
+		var name, envJSON, exitCode, startedAt, stoppedAt, createdAt, deletedAt, ephPubKey sql.NullString
 		if err := rows.Scan(&sess.ID, &sess.UserID, &sess.HostID, &name,
 			&sess.AgentType, &sess.WorkingDir, &sess.Command, &envJSON,
-			&sess.Status, &exitCode, &startedAt, &stoppedAt, &createdAt, &deletedAt); err != nil {
+			&sess.Status, &exitCode, &startedAt, &stoppedAt, &createdAt, &deletedAt, &ephPubKey); err != nil {
 			return nil, err
 		}
 		sess.Name = name.String
 		sess.EnvJSON = envJSON.String
+		sess.AgentEphemeralPubKey = ephPubKey.String
 		sess.StartedAt = parseTime(startedAt)
 		sess.StoppedAt = parseTime(stoppedAt)
 		if v := parseTime(createdAt); v != nil {
@@ -597,10 +627,10 @@ func (s *sqliteStore) ListActiveSessionsByHost(ctx context.Context, hostID strin
 
 func (s *sqliteStore) scanSession(row *sql.Row) (*Session, error) {
 	var sess Session
-	var name, envJSON, exitCode, startedAt, stoppedAt, createdAt, deletedAt sql.NullString
+	var name, envJSON, exitCode, startedAt, stoppedAt, createdAt, deletedAt, ephPubKey sql.NullString
 	err := row.Scan(&sess.ID, &sess.UserID, &sess.HostID, &name,
 		&sess.AgentType, &sess.WorkingDir, &sess.Command, &envJSON,
-		&sess.Status, &exitCode, &startedAt, &stoppedAt, &createdAt, &deletedAt)
+		&sess.Status, &exitCode, &startedAt, &stoppedAt, &createdAt, &deletedAt, &ephPubKey)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -609,6 +639,7 @@ func (s *sqliteStore) scanSession(row *sql.Row) (*Session, error) {
 	}
 	sess.Name = name.String
 	sess.EnvJSON = envJSON.String
+	sess.AgentEphemeralPubKey = ephPubKey.String
 	sess.StartedAt = parseTime(startedAt)
 	sess.StoppedAt = parseTime(stoppedAt)
 	if v := parseTime(createdAt); v != nil {
@@ -616,6 +647,13 @@ func (s *sqliteStore) scanSession(row *sql.Row) (*Session, error) {
 	}
 	sess.DeletedAt = parseTime(deletedAt)
 	return &sess, nil
+}
+
+func (s *sqliteStore) SetSessionEphemeralPubKey(ctx context.Context, sessionID, spkiBase64url string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE sessions SET agent_ephemeral_pubkey = ? WHERE id = ?`,
+		spkiBase64url, sessionID)
+	return err
 }
 
 func (s *sqliteStore) UpdateSessionStatus(ctx context.Context, id, status string) error {
@@ -692,21 +730,25 @@ func (s *sqliteStore) CreateApprovalRequest(ctx context.Context, r *ApprovalRequ
 	}
 	r.CreatedAt = time.Now().UTC()
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO approval_requests (id, session_id, user_id, tool_name, tool_input, risk_level, status, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`,
-		r.ID, r.SessionID, r.UserID, r.ToolName, r.ToolInput, r.RiskLevel, now(),
+		INSERT INTO approval_requests
+		  (id, session_id, user_id, tool_name, tool_input, risk_level, payload_ciphertext, status, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+		r.ID, r.SessionID, r.UserID,
+		nullStr(r.ToolName), nullStr(r.ToolInput), nullStr(r.RiskLevel),
+		nullStr(r.PayloadCiphertext), now(),
 	)
 	return err
 }
 
 func (s *sqliteStore) GetApprovalRequest(ctx context.Context, id string) (*ApprovalRequest, error) {
 	var r ApprovalRequest
-	var reason, decidedAt, decidedBy, createdAt sql.NullString
+	var toolName, toolInput, riskLevel, payloadCiphertext, reason, decidedAt, decidedBy, createdAt sql.NullString
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, session_id, user_id, tool_name, tool_input, risk_level, status,
+		SELECT id, session_id, user_id, tool_name, tool_input, risk_level, payload_ciphertext, status,
 		       decision_reason, decided_at, decided_by, created_at
 		FROM approval_requests WHERE id = ?`, id).Scan(
-		&r.ID, &r.SessionID, &r.UserID, &r.ToolName, &r.ToolInput, &r.RiskLevel, &r.Status,
+		&r.ID, &r.SessionID, &r.UserID,
+		&toolName, &toolInput, &riskLevel, &payloadCiphertext, &r.Status,
 		&reason, &decidedAt, &decidedBy, &createdAt,
 	)
 	if err == sql.ErrNoRows {
@@ -715,6 +757,10 @@ func (s *sqliteStore) GetApprovalRequest(ctx context.Context, id string) (*Appro
 	if err != nil {
 		return nil, err
 	}
+	r.ToolName = toolName.String
+	r.ToolInput = toolInput.String
+	r.RiskLevel = riskLevel.String
+	r.PayloadCiphertext = payloadCiphertext.String
 	r.DecisionReason = reason.String
 	r.DecidedAt = parseTime(decidedAt)
 	r.DecidedBy = decidedBy.String
@@ -726,7 +772,7 @@ func (s *sqliteStore) GetApprovalRequest(ctx context.Context, id string) (*Appro
 
 func (s *sqliteStore) ListPendingApprovals(ctx context.Context, userID string) ([]*ApprovalRequest, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, session_id, user_id, tool_name, tool_input, risk_level, status,
+		SELECT id, session_id, user_id, tool_name, tool_input, risk_level, payload_ciphertext, status,
 		       decision_reason, decided_at, decided_by, created_at
 		FROM approval_requests WHERE user_id = ? AND status = 'pending'
 		ORDER BY created_at ASC`, userID)
@@ -737,11 +783,16 @@ func (s *sqliteStore) ListPendingApprovals(ctx context.Context, userID string) (
 	var requests []*ApprovalRequest
 	for rows.Next() {
 		var r ApprovalRequest
-		var reason, decidedAt, decidedBy, createdAt sql.NullString
-		if err := rows.Scan(&r.ID, &r.SessionID, &r.UserID, &r.ToolName, &r.ToolInput,
-			&r.RiskLevel, &r.Status, &reason, &decidedAt, &decidedBy, &createdAt); err != nil {
+		var toolName, toolInput, riskLevel, payloadCiphertext, reason, decidedAt, decidedBy, createdAt sql.NullString
+		if err := rows.Scan(&r.ID, &r.SessionID, &r.UserID,
+			&toolName, &toolInput, &riskLevel, &payloadCiphertext, &r.Status,
+			&reason, &decidedAt, &decidedBy, &createdAt); err != nil {
 			return nil, err
 		}
+		r.ToolName = toolName.String
+		r.ToolInput = toolInput.String
+		r.RiskLevel = riskLevel.String
+		r.PayloadCiphertext = payloadCiphertext.String
 		r.DecisionReason = reason.String
 		r.DecidedAt = parseTime(decidedAt)
 		r.DecidedBy = decidedBy.String

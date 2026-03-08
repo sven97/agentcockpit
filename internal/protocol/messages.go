@@ -39,11 +39,12 @@ type HostHello struct {
 }
 
 type SessionStarted struct {
-	Type      string `json:"type"`
-	SessionID string `json:"sessionId"`
-	AgentType string `json:"agentType"`
-	CWD       string `json:"cwd"`
-	PID       int    `json:"pid"`
+	Type                 string `json:"type"`
+	SessionID            string `json:"sessionId"`
+	AgentType            string `json:"agentType"`
+	CWD                  string `json:"cwd"`
+	PID                  int    `json:"pid"`
+	AgentEphemeralPubKey string `json:"agentEphemeralPubKey,omitempty"` // SPKI base64url; set when E2E active
 }
 
 type SessionStopped struct {
@@ -56,9 +57,14 @@ type ApprovalRequest struct {
 	Type              string          `json:"type"`
 	RequestID         string          `json:"requestId"`
 	SessionID         string          `json:"sessionId"`
-	ToolName          string          `json:"toolName"`
-	ToolInput         json.RawMessage `json:"toolInput"`
-	RiskLevel         string          `json:"riskLevel"`
+	// Plaintext fields — populated only when E2E is NOT active.
+	ToolName          string          `json:"toolName,omitempty"`
+	ToolInput         json.RawMessage `json:"toolInput,omitempty"`
+	RiskLevel         string          `json:"riskLevel,omitempty"`
+	// E2E encrypted payload — base64url [12-byte IV][AES-GCM ciphertext].
+	// Decrypts to JSON: {"toolName":"…","toolInput":{…},"riskLevel":"…"}
+	EncryptedPayload  string          `json:"enc,omitempty"`
+	// Token accounting stays plaintext (not sensitive).
 	InputTokens       int             `json:"inputTokens,omitempty"`
 	ContextWindowSize int             `json:"contextWindowSize,omitempty"`
 }
@@ -71,11 +77,12 @@ type ApprovalResponse struct {
 }
 
 type SessionCreate struct {
-	Type      string `json:"type"`
-	SessionID string `json:"sessionId"`
-	AgentType string `json:"agentType"`
-	CWD       string `json:"cwd"`
-	Command   string `json:"command"`
+	Type          string `json:"type"`
+	SessionID     string `json:"sessionId"`
+	AgentType     string `json:"agentType"`
+	CWD           string `json:"cwd"`
+	Command       string `json:"command"`
+	UserE2EPubKey string `json:"userE2EPubKey,omitempty"` // SPKI base64url of user's long-term public key
 }
 
 type SessionKill struct {

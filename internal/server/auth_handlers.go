@@ -293,6 +293,24 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, safeUser(currentUser(r)))
 }
 
+// handleSetE2EPublicKey stores the user's long-term ECDH P-256 public key (SPKI base64url).
+// Called by the browser once after generating the keypair; idempotent on subsequent calls.
+func (s *Server) handleSetE2EPublicKey(w http.ResponseWriter, r *http.Request) {
+	user := currentUser(r)
+	var body struct {
+		PublicKey string `json:"publicKey"`
+	}
+	if err := decodeJSON(r, &body); err != nil || body.PublicKey == "" {
+		writeError(w, http.StatusBadRequest, "publicKey required")
+		return
+	}
+	if err := s.store.UpdateUserE2EPublicKey(r.Context(), user.ID, body.PublicKey); err != nil {
+		writeError(w, http.StatusInternalServerError, "db error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 func (s *Server) issueAuthToken(ctx context.Context, userID string, r *http.Request) (string, *store.AuthToken, error) {
@@ -312,11 +330,12 @@ func (s *Server) issueAuthToken(ctx context.Context, userID string, r *http.Requ
 
 func safeUser(u *store.User) map[string]any {
 	return map[string]any{
-		"id":         u.ID,
-		"email":      u.Email,
-		"name":       u.Name,
-		"role":       u.Role,
-		"created_at": u.CreatedAt,
+		"id":           u.ID,
+		"email":        u.Email,
+		"name":         u.Name,
+		"role":         u.Role,
+		"e2ePublicKey": u.E2EPublicKey, // empty string if not yet set
+		"created_at":   u.CreatedAt,
 	}
 }
 
