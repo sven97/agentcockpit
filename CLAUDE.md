@@ -133,3 +133,36 @@ docs(readme): update install instructions
 
 - Keep PRs small and focused — one logical change per PR
 - Always run `go build ./...` and `go test ./...` before pushing
+
+### Branch protection — never push directly to main
+
+`main` is **branch-protected**. Direct pushes are rejected. Always:
+
+1. Create a branch: `git checkout -b fix/my-fix`
+2. Push the branch: `git push -u origin fix/my-fix`
+3. Open a PR: `gh pr create ...`
+4. Wait for the `test` CI check to pass
+5. Merge via PR: `gh pr merge <number> --squash --delete-branch`
+
+### Post-merge monitoring
+
+After merging any PR, **always monitor the Deploy workflow** to confirm the Cloud Run deployment succeeded:
+
+```bash
+gh run list --repo sven97/agentcockpit --limit 3
+gh run watch <run-id> --repo sven97/agentcockpit
+```
+
+**CI/CD pipeline on push to main:**
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| `CI` | PRs to main | `go test ./...` + `go build` (required status check) |
+| `Deploy` | Every push to main | Builds Docker image → pushes to Artifact Registry → deploys to Cloud Run |
+| `Release CLI` | Push to main touching `cmd/`, `internal/agent/`, `internal/protocol/`, `go.mod` | Auto-bumps patch version, creates git tag, runs goreleaser |
+
+**Deploy checks:** Cloud Run health probe hits `GET /health` on port 8080. If the probe fails, the old revision stays live and the workflow exits with error. Check Cloud Run logs:
+
+```bash
+gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="agentcockpit"' --limit=30 --format="value(textPayload)"
+```
