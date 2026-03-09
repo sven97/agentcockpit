@@ -166,6 +166,25 @@ func (s *Server) Start() error {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
+	bgCtx, bgCancel := context.WithCancel(context.Background())
+
+	// Prune old session events hourly (sessions stopped > 7 days ago).
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-bgCtx.Done():
+				return
+			case <-ticker.C:
+				cutoff := time.Now().Add(-7 * 24 * time.Hour)
+				if err := s.store.PruneSessionEvents(context.Background(), cutoff); err != nil {
+					log.Printf("warn: prune session events: %v", err)
+				}
+			}
+		}
+	}()
+
 	errCh := make(chan error, 1)
 	go func() {
 		log.Printf("listening on %s (local=%v)", s.cfg.Addr, s.cfg.LocalMode)
@@ -176,12 +195,14 @@ func (s *Server) Start() error {
 
 	select {
 	case err := <-errCh:
+		bgCancel()
 		return err
 	case sig := <-quit:
 		log.Printf("received %s, shutting down", sig)
 	}
 
-	// Notify all WebSocket clients.
+	// Stop background goroutines, then notify WebSocket clients.
+	bgCancel()
 	s.hub.Shutdown(10)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

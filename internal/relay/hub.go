@@ -361,10 +361,13 @@ func (h *Hub) routeHostMessage(hc *HostConn, data []byte) {
 		}
 		h.store.StopSession(context.Background(), msg.SessionID, msg.ExitCode)
 		h.broadcastToUserBrowsersByUserID(hc.UserID, data)
-		// Release the sequence counter for this session.
+		// Release the sequence counter and token state for this session.
 		h.sessionSeqsMu.Lock()
 		delete(h.sessionSeqs, msg.SessionID)
 		h.sessionSeqsMu.Unlock()
+		h.sessionTokensMu.Lock()
+		delete(h.sessionTokens, msg.SessionID)
+		h.sessionTokensMu.Unlock()
 	}
 }
 
