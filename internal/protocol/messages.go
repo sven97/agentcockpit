@@ -7,6 +7,7 @@ import "encoding/json"
 const (
 	// Host → Server
 	TypeHostHello       = "host_hello"
+	TypeSessionList     = "session_list" // sent after host_hello to report active sessions on reconnect
 	TypeSessionStarted  = "session_started"
 	TypeSessionStopped  = "session_stopped"
 	TypeApprovalRequest = "approval_request"
@@ -29,6 +30,14 @@ const (
 	RiskExecute     = "execute"
 	RiskDestructive = "destructive"
 )
+
+// SessionList is sent by the agent immediately after host_hello to report which
+// sessions are still running. The server uses this to restore session status
+// after a reconnect (instead of leaving them as "error" from MarkStaleSessionsAsError).
+type SessionList struct {
+	Type     string   `json:"type"`
+	Sessions []string `json:"sessions"` // active session IDs
+}
 
 type HostHello struct {
 	Type         string `json:"type"`
