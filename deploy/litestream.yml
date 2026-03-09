@@ -4,7 +4,9 @@ dbs:
       - type: gcs
         bucket: ${GCS_BUCKET}
         path: agentcockpit/db
-        # Sync WAL every 1s; retain 24h of history
+        # Sync WAL every 1s; snapshot hourly so restore stays fast;
+        # retain 24h of history.
         sync-interval: 1s
+        snapshot-interval: 1h
         retention: 24h
         retention-check-interval: 1h
