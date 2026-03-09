@@ -91,6 +91,8 @@ jobs:
             --timeout=3600 \
             --concurrency=1000 \
             --allow-unauthenticated \
+            --startup-cpu-boost \
+            --startup-probe-failure-threshold=30 \
             --service-account="cloudrun@${{ secrets.GCP_PROJECT }}.iam.gserviceaccount.com" \
             --set-env-vars="DATA_DIR=/data,GCS_BUCKET=${{ secrets.GCS_BUCKET }}" \
             --set-secrets="AGENTCOCKPIT_SECRET=agentcockpit-secret:latest" \
